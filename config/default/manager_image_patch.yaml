@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    metadata:
+      annotations:
+        iam.amazonaws.com/role: ROLE_ARN
+    spec:
+      containers:
+      # Change the value of image field below to your controller image URL
+      - image: IMAGE_URL
+        name: manager
