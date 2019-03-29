@@ -1,0 +1,28 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  InstanceRoleArns:
+    Type: CommaDelimitedList
+    Description: List of ARNs that are allowed to assume this role
+
+Resources:
+  AmazonAPIGatewayIngressControllerRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: amazon-apigateway-ingress-controller
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              AWS: !Ref InstanceRoleArns
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: !Sub "amazon-apigateway-ingress-controller-${AWS::StackName}"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "*"
+                Resource: "*"
