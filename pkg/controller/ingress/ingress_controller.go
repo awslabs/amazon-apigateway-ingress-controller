@@ -238,7 +238,16 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	if instance.ObjectMeta.DeletionTimestamp.IsZero() == false {
 		if finalizers.HasFinalizer(instance, FinalizerCFNStack) {
 			r.log.Info("creating apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name))
-			return r.delete(instance)
+			instance, requeue, err := r.delete(instance)
+			if requeue != nil {
+				return *requeue, nil
+			}
+
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			return reconcile.Result{}, r.Update(context.TODO(), instance)
 		}
 
 		return reconcile.Result{}, nil
@@ -248,7 +257,12 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	stack, err := cfn.DescribeStack(r.cfnSvc, instance.ObjectMeta.Name)
 	if err != nil && cfn.IsDoesNotExist(err, instance.ObjectMeta.Name) {
 		r.log.Info("creating apigateway", zap.String("stackName", instance.ObjectMeta.Name))
-		if err := r.create(instance); err != nil {
+		instance, err := r.create(instance)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		if err := r.Update(context.TODO(), instance); err != nil {
 			return reconcile.Result{}, err
 		}
 
@@ -309,28 +323,28 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 
 }
 
-func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (reconcile.Result, error) {
+func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (*extensionsv1beta1.Ingress, *reconcile.Result, error) {
 	stack, err := cfn.DescribeStack(r.cfnSvc, instance.ObjectMeta.Name)
 	if err != nil && cfn.IsDoesNotExist(err, instance.ObjectMeta.Name) {
 		r.log.Info("stack doesn't exist, removing finalizer", zap.String("stackName", instance.ObjectMeta.Name))
 		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, FinalizerCFNStack))
-		return reconcile.Result{}, r.Update(context.TODO(), instance)
+		return instance, nil, nil
 	}
 
 	if err != nil {
 		r.log.Error("error describing apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name), zap.Error(err))
-		return reconcile.Result{}, err
+		return nil, nil, err
 	}
 
 	if cfn.IsDeleting(*stack.StackStatus) {
 		r.log.Info("retrying delete in 5 seconds", zap.String("status", *stack.StackStatus))
-		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+		return instance, &reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	if cfn.DeleteComplete(*stack.StackStatus) {
 		r.log.Info("delete complete, removing finalizer", zap.String("stackName", instance.ObjectMeta.Name))
 		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, FinalizerCFNStack))
-		return reconcile.Result{}, r.Update(context.TODO(), instance)
+		return instance, nil, nil
 	}
 
 	// We want to retry delete even if DELETE_FAILED since removing Loadbalancer/VPCLink can be a bit finnicky
@@ -339,10 +353,10 @@ func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (reconcil
 		StackName: aws.String(instance.GetObjectMeta().GetName()),
 	}); err != nil {
 		r.log.Error("error deleting apigateway cloudformation stack", zap.Error(err))
-		return reconcile.Result{}, err
+		return nil, nil, err
 	}
 
-	return reconcile.Result{Requeue: true}, nil
+	return instance, &reconcile.Result{Requeue: true}, nil
 }
 
 func (r *ReconcileIngress) buildReverseProxyResources(instance *extensionsv1beta1.Ingress) []metav1.Object {
@@ -472,19 +486,19 @@ func (r *ReconcileIngress) updateReverseProxy(instance *extensionsv1beta1.Ingres
 	return svc, nil
 }
 
-func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) error {
+func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensionsv1beta1.Ingress, error) {
 	r.log.Info("creating reverse proxy")
 	svc, err := r.updateReverseProxy(instance)
 	if err != nil {
 		r.log.Error("error creating proxy resources", zap.Error(err))
-		return err
+		return nil, err
 	}
 
 	// Fetch worker node networking info (grabs all nodes for now)
 	network, err := r.fetchNetworkingInfo(instance)
 	if err != nil {
 		r.log.Error("unable to fetch networking info", zap.Error(err))
-		return err
+		return nil, err
 	}
 
 	cfnTemplate := cfn.BuildApiGatewayTemplateFromIngressRule(&cfn.TemplateConfig{
@@ -499,7 +513,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) error {
 
 	b, err := cfnTemplate.YAML()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	r.log.Info("creating cloudformation stack")
@@ -514,17 +528,13 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) error {
 			},
 		},
 	}); err != nil {
-		return err
+		return nil, err
 	}
 
 	r.log.Info("cloudformation stack creating, setting finalizers", zap.String("StackName", instance.ObjectMeta.Name))
 	instance.SetFinalizers(finalizers.AddFinalizer(instance, FinalizerCFNStack))
 
-	if err := r.Update(context.TODO(), instance); err != nil {
-		return err
-	}
-
-	return nil
+	return instance, nil
 }
 
 func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress) error {

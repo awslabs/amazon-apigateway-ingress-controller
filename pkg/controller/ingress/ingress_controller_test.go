@@ -704,3 +704,180 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 		})
 	}
 }
+
+func TestReconcileIngress_create(t *testing.T) {
+	type fields struct {
+		Client        client.Client
+		scheme        *runtime.Scheme
+		cfnSvc        cloudformationiface.CloudFormationAPI
+		ec2Svc        ec2iface.EC2API
+		apigatewaySvc apigatewayiface.APIGatewayAPI
+		log           *zap.Logger
+	}
+	type args struct {
+		instance *extensionsv1beta1.Ingress
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *extensionsv1beta1.Ingress
+		wantErr bool
+	}{
+		{
+			name: "successful create adds finalizer",
+			fields: fields{
+				scheme: scheme.Scheme,
+				Client: fakeclient.NewFakeClient(newMockNodeList()),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{},
+				},
+				ec2Svc:        &mockEC2{},
+				apigatewaySvc: &mockAPIGateway{},
+				log:           logging.New(),
+			},
+			args: args{
+				instance: newMockIngress("foobar", false, false),
+			},
+			want:    newMockIngress("foobar", false, true),
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &ReconcileIngress{
+				Client:        tt.fields.Client,
+				scheme:        tt.fields.scheme,
+				cfnSvc:        tt.fields.cfnSvc,
+				ec2Svc:        tt.fields.ec2Svc,
+				apigatewaySvc: tt.fields.apigatewaySvc,
+				log:           tt.fields.log,
+			}
+			got, err := r.create(tt.args.instance)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ReconcileIngress.create() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ReconcileIngress.create() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReconcileIngress_delete(t *testing.T) {
+	type fields struct {
+		Client        client.Client
+		scheme        *runtime.Scheme
+		cfnSvc        cloudformationiface.CloudFormationAPI
+		ec2Svc        ec2iface.EC2API
+		apigatewaySvc apigatewayiface.APIGatewayAPI
+		log           *zap.Logger
+	}
+	type args struct {
+		instance *extensionsv1beta1.Ingress
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *extensionsv1beta1.Ingress
+		want1   *reconcile.Result
+		wantErr bool
+	}{
+		{
+			name: "cfn stack doesn't exist removes finalizer",
+			fields: fields{
+				scheme: scheme.Scheme,
+				Client: fakeclient.NewFakeClient(newMockNodeList()),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{},
+				},
+				ec2Svc:        &mockEC2{},
+				apigatewaySvc: &mockAPIGateway{},
+				log:           logging.New(),
+			},
+			args: args{
+				instance: &extensionsv1beta1.Ingress{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "foobar",
+						Namespace:   "default",
+						Annotations: map[string]string{},
+						Finalizers:  []string{FinalizerCFNStack},
+					},
+					Spec: extensionsv1beta1.IngressSpec{}},
+			},
+			want: &extensionsv1beta1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "foobar",
+					Namespace:   "default",
+					Annotations: map[string]string{},
+					Finalizers:  []string{},
+				},
+				Spec: extensionsv1beta1.IngressSpec{}},
+			want1:   nil,
+			wantErr: false,
+		},
+		{
+			name: "successful delete removes finalizer",
+			fields: fields{
+				scheme: scheme.Scheme,
+				Client: fakeclient.NewFakeClient(newMockNodeList()),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{
+						"foobar": &cloudformation.Stack{
+							StackStatus: aws.String(cloudformation.StackStatusDeleteComplete),
+						},
+					},
+				},
+				ec2Svc:        &mockEC2{},
+				apigatewaySvc: &mockAPIGateway{},
+				log:           logging.New(),
+			},
+			args: args{
+				instance: &extensionsv1beta1.Ingress{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "foobar",
+						Namespace:   "default",
+						Annotations: map[string]string{},
+						Finalizers:  []string{FinalizerCFNStack},
+					},
+					Spec: extensionsv1beta1.IngressSpec{}},
+			},
+			want: &extensionsv1beta1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "foobar",
+					Namespace:   "default",
+					Annotations: map[string]string{},
+					Finalizers:  []string{},
+				},
+				Spec: extensionsv1beta1.IngressSpec{}},
+			want1:   nil,
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &ReconcileIngress{
+				Client:        tt.fields.Client,
+				scheme:        tt.fields.scheme,
+				cfnSvc:        tt.fields.cfnSvc,
+				ec2Svc:        tt.fields.ec2Svc,
+				apigatewaySvc: tt.fields.apigatewaySvc,
+				log:           tt.fields.log,
+			}
+			got, got1, err := r.delete(tt.args.instance)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ReconcileIngress.delete() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ReconcileIngress.delete() got = %v, want %v", got, tt.want)
+			}
+			if !reflect.DeepEqual(got1, tt.want1) {
+				t.Errorf("ReconcileIngress.delete() got1 = %v, want %v", got1, tt.want1)
+			}
+		})
+	}
+}

@@ -148,7 +148,8 @@ func newMockIngress(name string, isDeleted, hasFinalizer bool) *extensionsv1beta
 
 	if isDeleted {
 		instance.ObjectMeta.DeletionTimestamp = func() *metav1.Time {
-			t := metav1.NewTime(time.Now())
+			t1, _ := time.Parse(time.RFC3339, "2012-11-01T22:08:41+00:00")
+			t := metav1.NewTime(t1)
 			return &t
 		}()
 	}
