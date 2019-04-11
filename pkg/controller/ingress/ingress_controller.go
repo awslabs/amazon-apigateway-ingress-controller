@@ -279,7 +279,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	if cfn.IsComplete(*stack.StackStatus) == false {
-		r.log.Info("Note complete, requeuing", zap.String("status", *stack.StackStatus))
+		r.log.Info("Not complete, requeuing", zap.String("status", *stack.StackStatus))
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, r.Update(context.TODO(), instance)
 	}
 
