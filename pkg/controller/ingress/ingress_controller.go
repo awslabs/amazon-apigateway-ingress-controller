@@ -237,7 +237,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	// Delete if timestamp is set
 	if instance.ObjectMeta.DeletionTimestamp.IsZero() == false {
 		if finalizers.HasFinalizer(instance, FinalizerCFNStack) {
-			r.log.Info("creating apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name))
+			// r.log.Info("deleting apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name))
 			instance, requeue, err := r.delete(instance)
 			if requeue != nil {
 				return *requeue, nil
@@ -348,7 +348,11 @@ func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (*extensi
 	}
 
 	// We want to retry delete even if DELETE_FAILED since removing Loadbalancer/VPCLink can be a bit finnicky
-	r.log.Info("deleting apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name))
+	r.log.Info(
+		"deleting apigateway cloudformation stack",
+		zap.String("stackName", instance.ObjectMeta.Name),
+		zap.String("status", *stack.StackStatus),
+	)
 	if _, err := r.cfnSvc.DeleteStack(&cloudformation.DeleteStackInput{
 		StackName: aws.String(instance.GetObjectMeta().GetName()),
 	}); err != nil {
