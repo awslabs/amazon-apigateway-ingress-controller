@@ -120,10 +120,15 @@ func buildAWSElasticLoadBalancingV2Listener() *resources.AWSElasticLoadBalancing
 func buildAWSElasticLoadBalancingV2LoadBalancer(subnetIDs []string) *resources.AWSElasticLoadBalancingV2LoadBalancer {
 	return &resources.AWSElasticLoadBalancingV2LoadBalancer{
 		IpAddressType: "ipv4",
-		Name:          cfn.Ref("AWS::StackName"),
 		Scheme:        "internal",
 		Subnets:       subnetIDs,
-		Type:          "network",
+		Tags: []resources.Tag{
+			{
+				Key:   "com.github.amazon-apigateway-ingress-controller/stack",
+				Value: cfn.Ref("AWS::StackName"),
+			},
+		},
+		Type: "network",
 	}
 }
 
@@ -134,7 +139,6 @@ func buildAWSElasticLoadBalancingV2TargetGroup(vpcID string, instanceIDs []strin
 	}
 
 	return &resources.AWSElasticLoadBalancingV2TargetGroup{
-		Name:                       cfn.Join("-", []string{cfn.Ref("AWS::StackName"), "tg"}),
 		HealthCheckIntervalSeconds: 30,
 		HealthCheckPort:            "traffic-port",
 		HealthCheckProtocol:        "TCP",
@@ -142,10 +146,16 @@ func buildAWSElasticLoadBalancingV2TargetGroup(vpcID string, instanceIDs []strin
 		HealthyThresholdCount:      3,
 		Port:                       nodePort,
 		Protocol:                   "TCP",
-		TargetType:                 "instance",
-		Targets:                    targets,
-		UnhealthyThresholdCount:    3,
-		VpcId:                      vpcID,
+		Tags: []resources.Tag{
+			{
+				Key:   "com.github.amazon-apigateway-ingress-controller/stack",
+				Value: cfn.Ref("AWS::StackName"),
+			},
+		},
+		TargetType:              "instance",
+		Targets:                 targets,
+		UnhealthyThresholdCount: 3,
+		VpcId:                   vpcID,
 	}
 
 }
