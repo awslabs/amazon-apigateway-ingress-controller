@@ -385,6 +385,32 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "fails if ingress name is too long",
+			fields: fields{
+				scheme: scheme.Scheme,
+				Client: fakeclient.NewFakeClient(
+					newMockIngress("foobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarf", false, false),
+					newMockNodeList(),
+				),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{},
+				},
+				ec2Svc:        &mockEC2{},
+				apigatewaySvc: &mockAPIGateway{},
+				log:           logging.New(),
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      "foobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarfoobarf",
+						Namespace: "default",
+					},
+				},
+			},
+			want:    reconcile.Result{},
+			wantErr: true,
+		},
+		{
 			name: "if stack doesn't exist, create stack",
 			fields: fields{
 				scheme: scheme.Scheme,

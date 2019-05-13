@@ -55,6 +55,7 @@ import (
 )
 
 const (
+	ingressNameLengthLimit            = 51
 	FinalizerCFNStack                 = "apigateway.networking.amazonaws.com/ingress-finalizer"
 	IngressClassAnnotation            = "kubernetes.io/ingress.class"
 	IngressAnnotationNodeSelector     = "apigateway.ingress.kubernetes.io/node-selector"
@@ -232,6 +233,10 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	// Ignore other ingress resources
 	if instance.Annotations[IngressClassAnnotation] != "apigateway" {
 		return reconcile.Result{}, nil
+	}
+
+	if len(instance.GetObjectMeta().GetName()) > ingressNameLengthLimit {
+		return reconcile.Result{}, fmt.Errorf("ingress name must be < %d characters", ingressNameLengthLimit)
 	}
 
 	// Delete if timestamp is set
