@@ -224,6 +224,31 @@ func buildCustomDomain(domainName, certificateArn string) *resources.AWSApiGatew
 	}
 }
 
+func buildCustomDomainBasePathMapping(domainName, stageName string) *resources.AWSApiGatewayBasePathMapping {
+	r := &resources.AWSApiGatewayBasePathMapping{
+		BasePath:   stageName,
+		DomainName: domainName,
+		RestApiId:  cfn.Ref("RestAPI"),
+		Stage:      stageName,
+	}
+
+	r.SetDependsOn([]string{"Deployment"})
+	return r
+
+}
+
+func buildCustomDomainRoute53Record(domainName, hostedZoneName string) *resources.AWSRoute53RecordSet {
+	return &resources.AWSRoute53RecordSet{
+		Name:           domainName,
+		HostedZoneName: hostedZoneName,
+		Type:           "A",
+		AliasTarget: &resources.AWSRoute53RecordSet_AliasTarget{
+			DNSName:      cfn.GetAtt("CustomDomain", "DistributionDomainName"),
+			HostedZoneId: cfn.GetAtt("CustomDomain", "DistributionHostedZoneId"),
+		},
+	}
+}
+
 type TemplateConfig struct {
 	Network          *network.Network
 	Rule             extensionsv1beta1.IngressRule
@@ -232,11 +257,23 @@ type TemplateConfig struct {
 	Arns             []string
 	CustomDomainName string
 	CertificateArn   string
+	HostedZoneName   string
 }
 
-func BuildApiGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
+func (c *TemplateConfig) validate() error {
+	if c.CustomDomainName != "" && (c.CertificateArn == "" || c.HostedZoneName == "") {
+		return fmt.Errorf("if a custom domain name is specified you must specify a certificate arn and a route53 hosted zone name")
+	}
+	return nil
+}
+
+func BuildApiGatewayTemplateFromIngressRule(cfg *TemplateConfig) (*cfn.Template, error) {
 	template := cfn.NewTemplate()
 	paths := cfg.Rule.IngressRuleValue.HTTP.Paths
+
+	if err := cfg.validate(); err != nil {
+		return template, err
+	}
 
 	methodLogicalNames := []string{}
 	resourceMap := mapApiGatewayMethodsAndResourcesFromPaths(paths)
@@ -271,9 +308,10 @@ func BuildApiGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	vPCLink := buildAWSApiGatewayVpcLink([]string{"LoadBalancer"})
 	template.Resources["VPCLink"] = vPCLink
 
-	if cfg.CustomDomainName != "" && cfg.CertificateArn != "" {
-		customDomain := buildCustomDomain(cfg.CustomDomainName, cfg.CertificateArn)
-		template.Resources["CustomDomain"] = customDomain
+	if cfg.CustomDomainName != "" {
+		template.Resources["CustomDomain"] = buildCustomDomain(cfg.CustomDomainName, cfg.CertificateArn)
+		template.Resources["CustomDomainBasePathMapping"] = buildCustomDomainBasePathMapping(cfg.CustomDomainName, cfg.StageName)
+		template.Resources["CustomDomainRoute53Record"] = buildCustomDomainRoute53Record(cfg.CustomDomainName, cfg.HostedZoneName)
 	}
 
 	template.Outputs = map[string]interface{}{
@@ -282,5 +320,5 @@ func BuildApiGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		OutputKeyClientARNS:         Output{Value: strings.Join(cfg.Arns, ",")},
 	}
 
-	return template
+	return template, nil
 }

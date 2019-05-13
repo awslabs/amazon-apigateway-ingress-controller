@@ -20,6 +20,10 @@ func getCertificateArn(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationCertificateArn]
 }
 
+func getHostedZoneName(ingress *extensionsv1beta1.Ingress) string {
+	return ingress.ObjectMeta.Annotations[IngressAnnotationHostedZoneName]
+}
+
 func getNodeSelector(ingress *extensionsv1beta1.Ingress) labels.Selector {
 	s, err := labels.Parse(ingress.ObjectMeta.Annotations[IngressAnnotationNodeSelector])
 	if err != nil {

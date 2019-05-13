@@ -155,7 +155,7 @@ func newMockIngress(name string, isDeleted, hasFinalizer bool) *extensionsv1beta
 	}
 
 	if hasFinalizer {
-		instance.SetFinalizers(finalizers.AddFinalizer(instance, FinalizerCFNStack))
+		instance.SetFinalizers(finalizers.AddFinalizer(instance, finalizerCFNStack))
 	}
 
 	return instance

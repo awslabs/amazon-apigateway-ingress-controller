@@ -10,6 +10,10 @@ metadata:
     apigateway.ingress.kubernetes.io/nginx-replicas: "3"
     apigateway.ingress.kubernetes.io/nginx-image: nginx:latest
     apigateway.ingress.kubernetes.io/nginx-service-port: "9090"
+    apigateway.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:<ACCOUNT_ID>:certificate/<CERTIFICATE_ID>
+    apigateway.ingress.kubernetes.io/custom-domain-name: foobar.example.com
+    apigateway.ingress.kubernetes.io/hosted-zone-name: example.com.
+
 spec:
   rules:
     - http:
