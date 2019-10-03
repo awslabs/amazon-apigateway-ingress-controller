@@ -8,6 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/apigateway"
 	"github.com/aws/aws-sdk-go/service/apigateway/apigatewayiface"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/aws/aws-sdk-go/service/cloudformation/cloudformationiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -66,8 +68,25 @@ func (m *mockCloudformation) DeleteStack(in *cloudformation.DeleteStackInput) (*
 	return nil, awserr.New("ValidationError", fmt.Sprintf("Stack with id %s does not exist", *in.StackName), fmt.Errorf(""))
 }
 
+func (m *mockCloudformation) ListStackResources(in *cloudformation.ListStackResourcesInput) (*cloudformation.ListStackResourcesOutput, error) {
+
+	if _, ok := m.Stacks[*in.StackName]; ok {
+		return &cloudformation.ListStackResourcesOutput{
+			StackResourceSummaries: []*cloudformation.StackResourceSummary{
+				{
+					LogicalResourceId:  aws.String("TargetGroup"),
+					PhysicalResourceId: aws.String("tgroupARN"),
+				},
+			},
+		}, nil
+	}
+
+	return nil, awserr.New("ValidationError", fmt.Sprintf("Cannot get targetgroup in %s stack", *in.StackName), fmt.Errorf(""))
+}
+
 type mockEC2 struct {
 	ec2iface.EC2API
+	getASGTag bool
 }
 
 func (m *mockEC2) DescribeVpcs(in *ec2.DescribeVpcsInput) (*ec2.DescribeVpcsOutput, error) {
@@ -82,6 +101,32 @@ func (m *mockEC2) DescribeVpcs(in *ec2.DescribeVpcsInput) (*ec2.DescribeVpcsOutp
 }
 
 func (m *mockEC2) DescribeInstances(in *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
+	if m.getASGTag {
+		return &ec2.DescribeInstancesOutput{
+			Reservations: []*ec2.Reservation{
+				&ec2.Reservation{
+					Instances: []*ec2.Instance{
+						&ec2.Instance{
+							VpcId:    aws.String("vpc-foobar"),
+							SubnetId: aws.String("sub-foobar"),
+							SecurityGroups: []*ec2.GroupIdentifier{
+								&ec2.GroupIdentifier{
+									GroupId: aws.String("sg-foobar"),
+								},
+							},
+							Tags: []*ec2.Tag{
+								{
+									Key:   aws.String("aws:autoscaling:groupName"),
+									Value: aws.String("asg-foobar"),
+								},
+							},
+						},
+					},
+				},
+			},
+		}, nil
+	}
+
 	return &ec2.DescribeInstancesOutput{
 		Reservations: []*ec2.Reservation{
 			&ec2.Reservation{
@@ -111,6 +156,53 @@ func (m *mockAPIGateway) CreateDeployment(in *apigateway.CreateDeploymentInput) 
 		return nil, fmt.Errorf("mockAPIGateway.CreateDeployment failed")
 	}
 	return &apigateway.Deployment{}, nil
+}
+
+type mockAutoscaling struct {
+	autoscalingiface.AutoScalingAPI
+	withTargetGroupARN bool
+	describeErr        bool
+	attachTGErr        bool
+	detachTGErr        bool
+}
+
+func (m *mockAutoscaling) DescribeAutoScalingGroups(in *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error) {
+	if m.withTargetGroupARN {
+		return &autoscaling.DescribeAutoScalingGroupsOutput{
+			AutoScalingGroups: []*autoscaling.Group{
+				{
+					VPCZoneIdentifier: aws.String("sub-foobar,sub-extra"),
+					TargetGroupARNs:   aws.StringSlice([]string{"tgroupARN"}),
+				},
+			},
+		}, nil
+	}
+
+	if m.describeErr {
+		return nil, awserr.New("ValidationError", "cannot describe ASG", fmt.Errorf(""))
+	}
+
+	return &autoscaling.DescribeAutoScalingGroupsOutput{
+		AutoScalingGroups: []*autoscaling.Group{
+			{
+				VPCZoneIdentifier: aws.String("sub-foobar"),
+			},
+		},
+	}, nil
+}
+
+func (m *mockAutoscaling) AttachLoadBalancerTargetGroups(in *autoscaling.AttachLoadBalancerTargetGroupsInput) (*autoscaling.AttachLoadBalancerTargetGroupsOutput, error) {
+	if m.attachTGErr {
+		return nil, awserr.New("ValidationError", "attach error", fmt.Errorf(""))
+	}
+	return &autoscaling.AttachLoadBalancerTargetGroupsOutput{}, nil
+}
+
+func (m *mockAutoscaling) DetachLoadBalancerTargetGroups(in *autoscaling.DetachLoadBalancerTargetGroupsInput) (*autoscaling.DetachLoadBalancerTargetGroupsOutput, error) {
+	if m.detachTGErr {
+		return nil, awserr.New("ValidationError", "attach error", fmt.Errorf(""))
+	}
+	return &autoscaling.DetachLoadBalancerTargetGroupsOutput{}, nil
 }
 
 func newMockIngress(name string, isDeleted, hasFinalizer bool) *extensionsv1beta1.Ingress {

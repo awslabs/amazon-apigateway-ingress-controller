@@ -22,6 +22,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/apigateway/apigatewayiface"
+	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/aws/aws-sdk-go/service/cloudformation/cloudformationiface"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
@@ -40,12 +41,13 @@ import (
 
 func TestReconcileIngress_Reconcile(t *testing.T) {
 	type fields struct {
-		Client        client.Client
-		scheme        *runtime.Scheme
-		cfnSvc        cloudformationiface.CloudFormationAPI
-		ec2Svc        ec2iface.EC2API
-		apigatewaySvc apigatewayiface.APIGatewayAPI
-		log           *zap.Logger
+		Client          client.Client
+		scheme          *runtime.Scheme
+		cfnSvc          cloudformationiface.CloudFormationAPI
+		ec2Svc          ec2iface.EC2API
+		apigatewaySvc   apigatewayiface.APIGatewayAPI
+		austoscalingSvc autoscalingiface.AutoScalingAPI
+		log             *zap.Logger
 	}
 	type args struct {
 		request reconcile.Request
@@ -61,11 +63,12 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 		{
 			name: "if k8s object doesn't exist",
 			fields: fields{
-				Client:        fakeclient.NewFakeClient(),
-				cfnSvc:        &mockCloudformation{},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				Client:          fakeclient.NewFakeClient(),
+				cfnSvc:          &mockCloudformation{},
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -86,10 +89,11 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
 					},
 				),
-				cfnSvc:        &mockCloudformation{},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				cfnSvc:          &mockCloudformation{},
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -109,9 +113,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -135,9 +140,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -161,9 +167,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -187,9 +194,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -205,7 +213,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 		{
 			name: "if cfn stack deletion has not completed - then call delete and requeue",
 			fields: fields{
-				Client: fakeclient.NewFakeClient(newMockIngress("foobar", true, true)),
+				Client: fakeclient.NewFakeClient(newMockIngress("foobar", true, true), newMockNodeList()),
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{
 						"foobar": &cloudformation.Stack{
@@ -213,9 +221,37 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      "foobar",
+						Namespace: "default",
+					},
+				},
+			},
+			want:    reconcile.Result{Requeue: true},
+			wantErr: false,
+		},
+		{
+			name: "cfn stack deletion with asg data in instances",
+			fields: fields{
+				Client: fakeclient.NewFakeClient(newMockIngress("foobar", true, true), newMockNodeList()),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{
+						"foobar": &cloudformation.Stack{
+							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
+						},
+					},
+				},
+				ec2Svc:          &mockEC2{getASGTag: true},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{withTargetGroupARN: true},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -231,7 +267,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 		{
 			name: "if cfn stack deletion fails (cfn describe stack fails)",
 			fields: fields{
-				Client: fakeclient.NewFakeClient(newMockIngress("broken", true, true)),
+				Client: fakeclient.NewFakeClient(newMockIngress("broken", true, true), newMockNodeList()),
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{
 						"broken": &cloudformation.Stack{
@@ -239,9 +275,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -257,7 +294,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 		{
 			name: "if cfn stack deletion fails (cfn delete stack fails)",
 			fields: fields{
-				Client: fakeclient.NewFakeClient(newMockIngress("brokenDelete", true, true)),
+				Client: fakeclient.NewFakeClient(newMockIngress("brokenDelete", true, true), newMockNodeList()),
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{
 						"brokenDelete": &cloudformation.Stack{
@@ -265,9 +302,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -291,9 +329,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -318,9 +357,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"broken": &cloudformation.Stack{},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -343,9 +383,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -369,9 +410,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -395,9 +437,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -421,9 +464,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -447,9 +491,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -465,7 +510,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 		{
 			name: "if cfn stack is complete but controller is unable to trigger APIGateway deploy",
 			fields: fields{
-				Client: fakeclient.NewFakeClient(newMockIngress("complete", false, false)),
+				Client: fakeclient.NewFakeClient(newMockIngress("complete", false, false), newMockNodeList()),
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{
 						"complete": &cloudformation.Stack{
@@ -478,9 +523,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -514,9 +560,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -549,9 +596,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -584,9 +632,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -620,9 +669,10 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -659,7 +709,8 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 				apigatewaySvc: &mockAPIGateway{
 					CreateDeploymentFail: true,
 				},
-				log: logging.New(),
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -692,9 +743,106 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      "complete",
+						Namespace: "default",
+					},
+				},
+			},
+			want:    reconcile.Result{},
+			wantErr: true,
+		},
+		{
+			name: "if cfn stack is complete and attaching targetGroupARN to ASG",
+			fields: fields{
+				Client: fakeclient.NewFakeClient(newMockIngress("complete", false, false), newMockNodeList()),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{
+						"complete": &cloudformation.Stack{
+							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
+							Outputs: []*cloudformation.Output{
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo,bar")},
+							},
+						},
+					},
+				},
+				ec2Svc:          &mockEC2{getASGTag: true},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      "complete",
+						Namespace: "default",
+					},
+				},
+			},
+			want:    reconcile.Result{},
+			wantErr: false,
+		},
+		{
+			name: "if cfn stack is complete and not attaching targetGroupARN to ASG",
+			fields: fields{
+				Client: fakeclient.NewFakeClient(newMockIngress("complete", false, false), newMockNodeList()),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{
+						"complete": &cloudformation.Stack{
+							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
+							Outputs: []*cloudformation.Output{
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo,bar")},
+							},
+						},
+					},
+				},
+				ec2Svc:          &mockEC2{getASGTag: true},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{withTargetGroupARN: true},
+				log:             logging.New(),
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      "complete",
+						Namespace: "default",
+					},
+				},
+			},
+			want:    reconcile.Result{},
+			wantErr: false,
+		},
+		{
+			name: "if cfn stack is complete and attaching targetGroupARN to ASG failed",
+			fields: fields{
+				Client: fakeclient.NewFakeClient(newMockIngress("complete", false, false), newMockNodeList()),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{
+						"complete": &cloudformation.Stack{
+							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
+							Outputs: []*cloudformation.Output{
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo,bar")},
+							},
+						},
+					},
+				},
+				ec2Svc:          &mockEC2{getASGTag: true},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{attachTGErr: true},
+				log:             logging.New(),
 			},
 			args: args{
 				request: reconcile.Request{
@@ -712,12 +860,13 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &ReconcileIngress{
-				Client:        tt.fields.Client,
-				scheme:        tt.fields.scheme,
-				cfnSvc:        tt.fields.cfnSvc,
-				ec2Svc:        tt.fields.ec2Svc,
-				apigatewaySvc: tt.fields.apigatewaySvc,
-				log:           tt.fields.log,
+				Client:         tt.fields.Client,
+				scheme:         tt.fields.scheme,
+				cfnSvc:         tt.fields.cfnSvc,
+				ec2Svc:         tt.fields.ec2Svc,
+				apigatewaySvc:  tt.fields.apigatewaySvc,
+				autoscalingSvc: tt.fields.austoscalingSvc,
+				log:            tt.fields.log,
 			}
 			got, err := r.Reconcile(tt.args.request)
 			if (err != nil) != tt.wantErr {
@@ -733,12 +882,13 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 
 func TestReconcileIngress_create(t *testing.T) {
 	type fields struct {
-		Client        client.Client
-		scheme        *runtime.Scheme
-		cfnSvc        cloudformationiface.CloudFormationAPI
-		ec2Svc        ec2iface.EC2API
-		apigatewaySvc apigatewayiface.APIGatewayAPI
-		log           *zap.Logger
+		Client          client.Client
+		scheme          *runtime.Scheme
+		cfnSvc          cloudformationiface.CloudFormationAPI
+		ec2Svc          ec2iface.EC2API
+		apigatewaySvc   apigatewayiface.APIGatewayAPI
+		austoscalingSvc autoscalingiface.AutoScalingAPI
+		log             *zap.Logger
 	}
 	type args struct {
 		instance *extensionsv1beta1.Ingress
@@ -758,9 +908,10 @@ func TestReconcileIngress_create(t *testing.T) {
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				instance: newMockIngress("foobar", false, false),
@@ -772,12 +923,13 @@ func TestReconcileIngress_create(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &ReconcileIngress{
-				Client:        tt.fields.Client,
-				scheme:        tt.fields.scheme,
-				cfnSvc:        tt.fields.cfnSvc,
-				ec2Svc:        tt.fields.ec2Svc,
-				apigatewaySvc: tt.fields.apigatewaySvc,
-				log:           tt.fields.log,
+				Client:         tt.fields.Client,
+				scheme:         tt.fields.scheme,
+				cfnSvc:         tt.fields.cfnSvc,
+				ec2Svc:         tt.fields.ec2Svc,
+				apigatewaySvc:  tt.fields.apigatewaySvc,
+				autoscalingSvc: tt.fields.austoscalingSvc,
+				log:            tt.fields.log,
 			}
 			got, err := r.create(tt.args.instance)
 			if (err != nil) != tt.wantErr {
@@ -793,12 +945,13 @@ func TestReconcileIngress_create(t *testing.T) {
 
 func TestReconcileIngress_delete(t *testing.T) {
 	type fields struct {
-		Client        client.Client
-		scheme        *runtime.Scheme
-		cfnSvc        cloudformationiface.CloudFormationAPI
-		ec2Svc        ec2iface.EC2API
-		apigatewaySvc apigatewayiface.APIGatewayAPI
-		log           *zap.Logger
+		Client          client.Client
+		scheme          *runtime.Scheme
+		cfnSvc          cloudformationiface.CloudFormationAPI
+		ec2Svc          ec2iface.EC2API
+		apigatewaySvc   apigatewayiface.APIGatewayAPI
+		austoscalingSvc autoscalingiface.AutoScalingAPI
+		log             *zap.Logger
 	}
 	type args struct {
 		instance *extensionsv1beta1.Ingress
@@ -819,9 +972,10 @@ func TestReconcileIngress_delete(t *testing.T) {
 				cfnSvc: &mockCloudformation{
 					Stacks: map[string]*cloudformation.Stack{},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				instance: &extensionsv1beta1.Ingress{
@@ -856,9 +1010,10 @@ func TestReconcileIngress_delete(t *testing.T) {
 						},
 					},
 				},
-				ec2Svc:        &mockEC2{},
-				apigatewaySvc: &mockAPIGateway{},
-				log:           logging.New(),
+				ec2Svc:          &mockEC2{},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
 			},
 			args: args{
 				instance: &extensionsv1beta1.Ingress{
@@ -881,16 +1036,124 @@ func TestReconcileIngress_delete(t *testing.T) {
 			want1:   nil,
 			wantErr: false,
 		},
+		{
+			name: "successful deatch targetARN from AG and delete",
+			fields: fields{
+				scheme: scheme.Scheme,
+				Client: fakeclient.NewFakeClient(newMockNodeList()),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{
+						"foobar": &cloudformation.Stack{
+							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
+						},
+					},
+				},
+				ec2Svc:          &mockEC2{getASGTag: true},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{withTargetGroupARN: true},
+				log:             logging.New(),
+			},
+			args: args{
+				instance: &extensionsv1beta1.Ingress{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "foobar",
+						Namespace:   "default",
+						Annotations: map[string]string{},
+						Finalizers:  []string{FinalizerCFNStack},
+					},
+					Spec: extensionsv1beta1.IngressSpec{}},
+			},
+			want: &extensionsv1beta1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "foobar",
+					Namespace:   "default",
+					Annotations: map[string]string{},
+					Finalizers:  []string{FinalizerCFNStack},
+				},
+				Spec: extensionsv1beta1.IngressSpec{}},
+			want1:   &reconcile.Result{Requeue: true},
+			wantErr: false,
+		},
+		{
+			name: "do not perform detach of targetGroupARN from ASG and successful delete",
+			fields: fields{
+				scheme: scheme.Scheme,
+				Client: fakeclient.NewFakeClient(newMockNodeList()),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{
+						"foobar": &cloudformation.Stack{
+							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
+						},
+					},
+				},
+				ec2Svc:          &mockEC2{getASGTag: true},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{},
+				log:             logging.New(),
+			},
+			args: args{
+				instance: &extensionsv1beta1.Ingress{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "foobar",
+						Namespace:   "default",
+						Annotations: map[string]string{},
+						Finalizers:  []string{FinalizerCFNStack},
+					},
+					Spec: extensionsv1beta1.IngressSpec{}},
+			},
+			want: &extensionsv1beta1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "foobar",
+					Namespace:   "default",
+					Annotations: map[string]string{},
+					Finalizers:  []string{FinalizerCFNStack},
+				},
+				Spec: extensionsv1beta1.IngressSpec{}},
+			want1:   &reconcile.Result{Requeue: true},
+			wantErr: false,
+		},
+		{
+			name: "detaching tragetGroupARN from ASG fails",
+			fields: fields{
+				scheme: scheme.Scheme,
+				Client: fakeclient.NewFakeClient(newMockNodeList()),
+				cfnSvc: &mockCloudformation{
+					Stacks: map[string]*cloudformation.Stack{
+						"foobar": &cloudformation.Stack{
+							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
+						},
+					},
+				},
+				ec2Svc:          &mockEC2{getASGTag: true},
+				apigatewaySvc:   &mockAPIGateway{},
+				austoscalingSvc: &mockAutoscaling{detachTGErr: true, withTargetGroupARN: true},
+				log:             logging.New(),
+			},
+			args: args{
+				instance: &extensionsv1beta1.Ingress{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "foobar",
+						Namespace:   "default",
+						Annotations: map[string]string{},
+						Finalizers:  []string{FinalizerCFNStack},
+					},
+					Spec: extensionsv1beta1.IngressSpec{}},
+			},
+			want:    nil,
+			want1:   nil,
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &ReconcileIngress{
-				Client:        tt.fields.Client,
-				scheme:        tt.fields.scheme,
-				cfnSvc:        tt.fields.cfnSvc,
-				ec2Svc:        tt.fields.ec2Svc,
-				apigatewaySvc: tt.fields.apigatewaySvc,
-				log:           tt.fields.log,
+				Client:         tt.fields.Client,
+				scheme:         tt.fields.scheme,
+				cfnSvc:         tt.fields.cfnSvc,
+				ec2Svc:         tt.fields.ec2Svc,
+				apigatewaySvc:  tt.fields.apigatewaySvc,
+				autoscalingSvc: tt.fields.austoscalingSvc,
+				log:            tt.fields.log,
 			}
 			got, got1, err := r.delete(tt.args.instance)
 			if (err != nil) != tt.wantErr {

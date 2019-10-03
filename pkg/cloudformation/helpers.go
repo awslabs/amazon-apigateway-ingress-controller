@@ -121,6 +121,23 @@ func DescribeStack(cfnSvc cloudformationiface.CloudFormationAPI, stackName strin
 	return out.Stacks[0], nil
 }
 
+func GetResourceID(cfnSvc cloudformationiface.CloudFormationAPI, stackName string, logicalID string) (string, error) {
+	resources, err := cfnSvc.ListStackResources(&cloudformation.ListStackResourcesInput{
+		StackName: aws.String(stackName),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	for _, resourceSummary := range resources.StackResourceSummaries {
+		if *resourceSummary.LogicalResourceId == logicalID {
+			return *resourceSummary.PhysicalResourceId, nil
+		}
+	}
+
+	return "", fmt.Errorf("resource %s not found", logicalID)
+}
+
 func StackOutputMap(stack *cloudformation.Stack) map[string]string {
 	outputs := map[string]string{}
 	for _, output := range stack.Outputs {
