@@ -19,6 +19,13 @@ type Network struct {
 	Vpc              *ec2.Vpc
 }
 
+func getListFromMap(data map[string]bool) (uniqData []string) {
+	for key := range data {
+		uniqData = append(uniqData, key)
+	}
+	return uniqData
+}
+
 func GetNetworkInfoForEC2Instances(ec2svc ec2iface.EC2API, autoscalingSvc autoscalingiface.AutoScalingAPI, nodeInstanceIds []string) (vpcIds []string, subnetIds []string, securityGroups []string, asgNames []string, err error) {
 	output, err := ec2svc.DescribeInstances(&ec2.DescribeInstancesInput{
 		InstanceIds: aws.StringSlice(nodeInstanceIds),
@@ -69,17 +76,9 @@ func GetNetworkInfoForEC2Instances(ec2svc ec2iface.EC2API, autoscalingSvc autosc
 		}
 	}
 
-	for sid := range sids {
-		subnetIds = append(subnetIds, sid)
-	}
-
-	for sg := range sgs {
-		securityGroups = append(securityGroups, sg)
-	}
-
-	for id := range vids {
-		vpcIds = append(vpcIds, id)
-	}
+	subnetIds = getListFromMap(sids)
+	securityGroups = getListFromMap(sgs)
+	vpcIds = getListFromMap(vids)
 
 	return vpcIds, subnetIds, securityGroups, asgNames, nil
 }

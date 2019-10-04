@@ -194,7 +194,7 @@ func (r *ReconcileIngress) fetchNetworkingInfo(instance *extensionsv1beta1.Ingre
 		return nil, err
 	}
 
-	r.log.Info("describing VPCs")
+	r.log.Info("describing VPCs", zap.String("VPCs", strings.Join(vpcIDs, ",")))
 	describeVPCResponse, err := r.ec2Svc.DescribeVpcs(&ec2.DescribeVpcsInput{
 		VpcIds: aws.StringSlice(vpcIDs),
 	})
@@ -320,7 +320,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	err = r.verifyAndUpdateASG(instance, false)
+	err = r.attachTGToASG(instance)
 	if err != nil {
 		r.log.Error("unable to verify ASG after create/update", zap.Error(err))
 		return reconcile.Result{}, err
@@ -339,38 +339,53 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 
 }
 
-func (r *ReconcileIngress) verifyAndUpdateASG(instance *extensionsv1beta1.Ingress, remove bool) error {
+func (r *ReconcileIngress) getASGsAndTargetGroup(instance *extensionsv1beta1.Ingress) ([]string, string, error) {
 	stackName := instance.ObjectMeta.Name
 
 	network, err := r.fetchNetworkingInfo(instance)
 	if err != nil {
 		r.log.Error("error fetching network information", zap.String("stackName", stackName))
-		return err
-	}
-
-	if len(network.ASGNames) == 0 {
-		return nil
+		return nil, "", err
 	}
 
 	targetGroupARN, err := cfn.GetResourceID(r.cfnSvc, stackName, "TargetGroup")
 	if err != nil {
 		r.log.Error("error getting TargetGroupARN", zap.String("stackName", stackName))
+		return nil, "", err
+	}
+
+	return network.ASGNames, targetGroupARN, nil
+}
+
+func (r *ReconcileIngress) getTargetGroupsFromASG(asgName string) ([]string, error) {
+	data, err := r.autoscalingSvc.DescribeAutoScalingGroups(&autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: aws.StringSlice([]string{asgName}),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return aws.StringValueSlice(data.AutoScalingGroups[0].TargetGroupARNs), nil
+}
+
+func (r *ReconcileIngress) attachTGToASG(instance *extensionsv1beta1.Ingress) error {
+	asgNames, targetGroupARN, err := r.getASGsAndTargetGroup(instance)
+	if err != nil {
 		return err
 	}
 
-	for _, asgName := range network.ASGNames {
-		data, err := r.autoscalingSvc.DescribeAutoScalingGroups(&autoscaling.DescribeAutoScalingGroupsInput{
-			AutoScalingGroupNames: aws.StringSlice([]string{asgName}),
-		})
+	stackName := instance.ObjectMeta.Name
+
+	for _, asgName := range asgNames {
+		existingTargetGroupARNs, err := r.getTargetGroupsFromASG(asgName)
 		if err != nil {
 			r.log.Error("error describing ASG", zap.String("stackName", stackName), zap.String("asgName", asgName))
 			return err
 		}
 
-		asg := data.AutoScalingGroups[0]
-		existingTargetGroupARNs := aws.StringValueSlice(asg.TargetGroupARNs)
-
-		if remove == false && contains(existingTargetGroupARNs, targetGroupARN) == false {
+		if contains(existingTargetGroupARNs, targetGroupARN) {
+			r.log.Info("targetGroupARN already attached to ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
+		} else {
 			r.log.Info("attaching targetGroupARN to ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
 			_, err = r.autoscalingSvc.AttachLoadBalancerTargetGroups(&autoscaling.AttachLoadBalancerTargetGroupsInput{
 				AutoScalingGroupName: aws.String(asgName),
@@ -381,8 +396,27 @@ func (r *ReconcileIngress) verifyAndUpdateASG(instance *extensionsv1beta1.Ingres
 				return err
 			}
 		}
+	}
 
-		if remove == true && contains(existingTargetGroupARNs, targetGroupARN) == true {
+	return nil
+}
+
+func (r *ReconcileIngress) detachTGFromASG(instance *extensionsv1beta1.Ingress) error {
+	asgNames, targetGroupARN, err := r.getASGsAndTargetGroup(instance)
+	if err != nil {
+		return err
+	}
+
+	stackName := instance.ObjectMeta.Name
+
+	for _, asgName := range asgNames {
+		existingTargetGroupARNs, err := r.getTargetGroupsFromASG(asgName)
+		if err != nil {
+			r.log.Error("error describing ASG", zap.String("stackName", stackName), zap.String("asgName", asgName))
+			return err
+		}
+
+		if contains(existingTargetGroupARNs, targetGroupARN) {
 			r.log.Info("detaching targetGroupARN from ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
 			_, err = r.autoscalingSvc.DetachLoadBalancerTargetGroups(&autoscaling.DetachLoadBalancerTargetGroupsInput{
 				AutoScalingGroupName: aws.String(asgName),
@@ -392,6 +426,8 @@ func (r *ReconcileIngress) verifyAndUpdateASG(instance *extensionsv1beta1.Ingres
 				r.log.Error("error detaching targetGroupARN from ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
 				return err
 			}
+		} else {
+			r.log.Info("targetGroupARN already removed from ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
 		}
 	}
 
@@ -438,7 +474,7 @@ func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (*extensi
 		zap.String("status", *stack.StackStatus),
 	)
 
-	err = r.verifyAndUpdateASG(instance, true)
+	err = r.detachTGFromASG(instance)
 	if err != nil {
 		r.log.Error("unable to verify ASG before delete", zap.Error(err))
 		return nil, nil, err
