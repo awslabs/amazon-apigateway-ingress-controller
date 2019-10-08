@@ -29,6 +29,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/apigateway"
 	"github.com/aws/aws-sdk-go/service/apigateway/apigatewayiface"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/aws/aws-sdk-go/service/cloudformation/cloudformationiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -114,12 +116,13 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	sess := getAWSSession(logger)
 
 	return &ReconcileIngress{
-		Client:        mgr.GetClient(),
-		scheme:        mgr.GetScheme(),
-		log:           logger,
-		cfnSvc:        cloudformation.New(sess),
-		ec2Svc:        ec2.New(sess),
-		apigatewaySvc: apigateway.New(sess),
+		Client:         mgr.GetClient(),
+		scheme:         mgr.GetScheme(),
+		log:            logger,
+		cfnSvc:         cloudformation.New(sess),
+		ec2Svc:         ec2.New(sess),
+		apigatewaySvc:  apigateway.New(sess),
+		autoscalingSvc: autoscaling.New(sess),
 	}
 }
 
@@ -155,11 +158,12 @@ var _ reconcile.Reconciler = &ReconcileIngress{}
 // ReconcileIngress reconciles a Ingress object
 type ReconcileIngress struct {
 	client.Client
-	scheme        *runtime.Scheme
-	cfnSvc        cloudformationiface.CloudFormationAPI
-	ec2Svc        ec2iface.EC2API
-	apigatewaySvc apigatewayiface.APIGatewayAPI
-	log           *zap.Logger
+	scheme         *runtime.Scheme
+	cfnSvc         cloudformationiface.CloudFormationAPI
+	ec2Svc         ec2iface.EC2API
+	apigatewaySvc  apigatewayiface.APIGatewayAPI
+	autoscalingSvc autoscalingiface.AutoScalingAPI
+	log            *zap.Logger
 }
 
 func (r *ReconcileIngress) fetchNetworkingInfo(instance *extensionsv1beta1.Ingress) (*network.Network, error) {
@@ -184,13 +188,13 @@ func (r *ReconcileIngress) fetchNetworkingInfo(instance *extensionsv1beta1.Ingre
 		nodeInstanceIds = append(nodeInstanceIds, node.Spec.ProviderID[strings.LastIndex(node.Spec.ProviderID, "/")+1:])
 	}
 
-	r.log.Info("getting vpcID, securityGroups, subnetIds for worker nodes")
-	vpcIDs, subnetIds, securityGroups, err := network.GetNetworkInfoForEC2Instances(r.ec2Svc, nodeInstanceIds)
+	r.log.Info("getting vpcID, securityGroups, subnetIds, asgNames for worker nodes")
+	vpcIDs, subnetIds, securityGroups, asgNames, err := network.GetNetworkInfoForEC2Instances(r.ec2Svc, r.autoscalingSvc, nodeInstanceIds)
 	if err != nil {
 		return nil, err
 	}
 
-	r.log.Info("creating API Gateway cloudformation stack")
+	r.log.Info("describing VPCs", zap.String("VPCs", strings.Join(vpcIDs, ",")))
 	describeVPCResponse, err := r.ec2Svc.DescribeVpcs(&ec2.DescribeVpcsInput{
 		VpcIds: aws.StringSlice(vpcIDs),
 	})
@@ -203,6 +207,7 @@ func (r *ReconcileIngress) fetchNetworkingInfo(instance *extensionsv1beta1.Ingre
 		InstanceIDs:      nodeInstanceIds,
 		SecurityGroupIDs: securityGroups,
 		SubnetIDs:        subnetIds,
+		ASGNames:         asgNames,
 		Vpc:              describeVPCResponse.Vpcs[0],
 	}, nil
 }
@@ -315,6 +320,12 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
+	err = r.attachTGToASG(instance)
+	if err != nil {
+		r.log.Error("unable to verify ASG after create/update", zap.Error(err))
+		return reconcile.Result{}, err
+	}
+
 	r.log.Info("Stack Create/Update Complete")
 	instance.Status = extensionsv1beta1.IngressStatus{
 		LoadBalancer: corev1.LoadBalancerStatus{
@@ -326,6 +337,110 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	return reconcile.Result{}, r.Status().Update(context.TODO(), instance)
 
+}
+
+func (r *ReconcileIngress) getASGsAndTargetGroup(instance *extensionsv1beta1.Ingress) ([]string, string, error) {
+	stackName := instance.ObjectMeta.Name
+
+	network, err := r.fetchNetworkingInfo(instance)
+	if err != nil {
+		r.log.Error("error fetching network information", zap.String("stackName", stackName))
+		return nil, "", err
+	}
+
+	targetGroupARN, err := cfn.GetResourceID(r.cfnSvc, stackName, "TargetGroup")
+	if err != nil {
+		r.log.Error("error getting TargetGroupARN", zap.String("stackName", stackName))
+		return nil, "", err
+	}
+
+	return network.ASGNames, targetGroupARN, nil
+}
+
+func (r *ReconcileIngress) getTargetGroupsFromASG(asgName string) ([]string, error) {
+	data, err := r.autoscalingSvc.DescribeAutoScalingGroups(&autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: aws.StringSlice([]string{asgName}),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return aws.StringValueSlice(data.AutoScalingGroups[0].TargetGroupARNs), nil
+}
+
+func (r *ReconcileIngress) attachTGToASG(instance *extensionsv1beta1.Ingress) error {
+	asgNames, targetGroupARN, err := r.getASGsAndTargetGroup(instance)
+	if err != nil {
+		return err
+	}
+
+	stackName := instance.ObjectMeta.Name
+
+	for _, asgName := range asgNames {
+		existingTargetGroupARNs, err := r.getTargetGroupsFromASG(asgName)
+		if err != nil {
+			r.log.Error("error describing ASG", zap.String("stackName", stackName), zap.String("asgName", asgName))
+			return err
+		}
+
+		if contains(existingTargetGroupARNs, targetGroupARN) {
+			r.log.Info("targetGroupARN already attached to ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
+		} else {
+			r.log.Info("attaching targetGroupARN to ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
+			_, err = r.autoscalingSvc.AttachLoadBalancerTargetGroups(&autoscaling.AttachLoadBalancerTargetGroupsInput{
+				AutoScalingGroupName: aws.String(asgName),
+				TargetGroupARNs:      aws.StringSlice([]string{targetGroupARN}),
+			})
+			if err != nil {
+				r.log.Error("error attaching targetGroupARN to ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (r *ReconcileIngress) detachTGFromASG(instance *extensionsv1beta1.Ingress) error {
+	asgNames, targetGroupARN, err := r.getASGsAndTargetGroup(instance)
+	if err != nil {
+		return err
+	}
+
+	stackName := instance.ObjectMeta.Name
+
+	for _, asgName := range asgNames {
+		existingTargetGroupARNs, err := r.getTargetGroupsFromASG(asgName)
+		if err != nil {
+			r.log.Error("error describing ASG", zap.String("stackName", stackName), zap.String("asgName", asgName))
+			return err
+		}
+
+		if contains(existingTargetGroupARNs, targetGroupARN) {
+			r.log.Info("detaching targetGroupARN from ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
+			_, err = r.autoscalingSvc.DetachLoadBalancerTargetGroups(&autoscaling.DetachLoadBalancerTargetGroupsInput{
+				AutoScalingGroupName: aws.String(asgName),
+				TargetGroupARNs:      aws.StringSlice([]string{targetGroupARN}),
+			})
+			if err != nil {
+				r.log.Error("error detaching targetGroupARN from ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
+				return err
+			}
+		} else {
+			r.log.Info("targetGroupARN already removed from ASG", zap.String("stackName", stackName), zap.String("asgName", asgName), zap.String("targetGroupARN", targetGroupARN))
+		}
+	}
+
+	return nil
+}
+
+func contains(records []string, key string) bool {
+	for _, data := range records {
+		if key == data {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (*extensionsv1beta1.Ingress, *reconcile.Result, error) {
@@ -358,6 +473,13 @@ func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (*extensi
 		zap.String("stackName", instance.ObjectMeta.Name),
 		zap.String("status", *stack.StackStatus),
 	)
+
+	err = r.detachTGFromASG(instance)
+	if err != nil {
+		r.log.Error("unable to verify ASG before delete", zap.Error(err))
+		return nil, nil, err
+	}
+
 	if _, err := r.cfnSvc.DeleteStack(&cloudformation.DeleteStackInput{
 		StackName: aws.String(instance.GetObjectMeta().GetName()),
 	}); err != nil {
