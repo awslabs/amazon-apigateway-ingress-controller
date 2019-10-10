@@ -57,17 +57,8 @@ import (
 )
 
 const (
-	ingressNameLengthLimit            = 51
-	FinalizerCFNStack                 = "apigateway.networking.amazonaws.com/ingress-finalizer"
-	IngressClassAnnotation            = "kubernetes.io/ingress.class"
-	IngressAnnotationNodeSelector     = "apigateway.ingress.kubernetes.io/node-selector"
-	IngressAnnotationClientArns       = "apigateway.ingress.kubernetes.io/client-arns"
-	IngressAnnotationCustomDomainName = "apigateway.ingress.kubernetes.io/custom-domain-name"
-	IngressAnnotationCertificateArn   = "apigateway.ingress.kubernetes.io/certificate-arn"
-	IngressAnnotationStageName        = "apigateway.ingress.kubernetes.io/stage-name"
-	IngressAnnotationNginxReplicas    = "apigateway.ingress.kubernetes.io/nginx-replicas"
-	IngressAnnotationNginxImage       = "apigateway.ingress.kubernetes.io/nginx-image"
-	IngressAnnotationNginxServicePort = "apigateway.ingress.kubernetes.io/nginx-service-port"
+	ingressNameLengthLimit = 51
+	finalizerCFNStack      = "apigateway.networking.amazonaws.com/ingress-finalizer"
 )
 
 var (
@@ -246,7 +237,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Delete if timestamp is set
 	if instance.ObjectMeta.DeletionTimestamp.IsZero() == false {
-		if finalizers.HasFinalizer(instance, FinalizerCFNStack) {
+		if finalizers.HasFinalizer(instance, finalizerCFNStack) {
 			// r.log.Info("deleting apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name))
 			instance, requeue, err := r.delete(instance)
 			if requeue != nil {
@@ -447,7 +438,7 @@ func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (*extensi
 	stack, err := cfn.DescribeStack(r.cfnSvc, instance.ObjectMeta.Name)
 	if err != nil && cfn.IsDoesNotExist(err, instance.ObjectMeta.Name) {
 		r.log.Info("stack doesn't exist, removing finalizer", zap.String("stackName", instance.ObjectMeta.Name))
-		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, FinalizerCFNStack))
+		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, finalizerCFNStack))
 		return instance, nil, nil
 	}
 
@@ -463,7 +454,7 @@ func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (*extensi
 
 	if cfn.DeleteComplete(*stack.StackStatus) {
 		r.log.Info("delete complete, removing finalizer", zap.String("stackName", instance.ObjectMeta.Name))
-		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, FinalizerCFNStack))
+		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, finalizerCFNStack))
 		return instance, nil, nil
 	}
 
@@ -632,7 +623,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		return nil, err
 	}
 
-	cfnTemplate := cfn.BuildApiGatewayTemplateFromIngressRule(&cfn.TemplateConfig{
+	cfnTemplate, err := cfn.BuildApiGatewayTemplateFromIngressRule(&cfn.TemplateConfig{
 		Rule:             instance.Spec.Rules[0],
 		Network:          network,
 		NodePort:         int(svc.Spec.Ports[0].NodePort),
@@ -640,7 +631,11 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		StageName:        getStageName(instance),
 		CustomDomainName: getCustomDomainName(instance),
 		CertificateArn:   getCertificateArn(instance),
+		HostedZoneName:   getHostedZoneName(instance),
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	b, err := cfnTemplate.YAML()
 	if err != nil {
@@ -663,7 +658,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 	}
 
 	r.log.Info("cloudformation stack creating, setting finalizers", zap.String("StackName", instance.ObjectMeta.Name))
-	instance.SetFinalizers(finalizers.AddFinalizer(instance, FinalizerCFNStack))
+	instance.SetFinalizers(finalizers.AddFinalizer(instance, finalizerCFNStack))
 
 	return instance, nil
 }
@@ -682,7 +677,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress) error {
 		return err
 	}
 
-	cfnTemplate := cfn.BuildApiGatewayTemplateFromIngressRule(&cfn.TemplateConfig{
+	cfnTemplate, err := cfn.BuildApiGatewayTemplateFromIngressRule(&cfn.TemplateConfig{
 		Rule:             instance.Spec.Rules[0],
 		Network:          network,
 		Arns:             getArns(instance),
@@ -690,7 +685,13 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress) error {
 		NodePort:         int(svc.Spec.Ports[0].NodePort),
 		CustomDomainName: getCustomDomainName(instance),
 		CertificateArn:   getCertificateArn(instance),
+		HostedZoneName:   getHostedZoneName(instance),
 	})
+
+	if err != nil {
+		return err
+	}
+
 	b, err := cfnTemplate.YAML()
 	if err != nil {
 		return err
