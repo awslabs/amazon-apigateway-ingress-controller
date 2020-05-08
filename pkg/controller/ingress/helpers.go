@@ -7,6 +7,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/labels"
 
+	"github.com/aws/aws-sdk-go/service/apigateway"
+	"github.com/aws/aws-sdk-go/service/apigateway/apigatewayiface"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	cfn "github.com/awslabs/amazon-apigateway-ingress-controller/pkg/cloudformation"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
@@ -66,9 +68,46 @@ func getNginxReplicas(ingress *extensionsv1beta1.Ingress) int {
 	return r
 }
 
-func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress) bool {
+func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress, apigw apigatewayiface.APIGatewayAPI) bool {
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS] != strings.Join(getArns(instance), ",") {
 		return true
+	}
+
+	apiId := cfn.StackOutputMap(stack)[cfn.OutputKeyRestApiID]
+	var getResourceInput apigateway.GetResourcesInput
+	var limit int64
+	limit = 500
+	method := "methods"
+	embed := []*string{&method}
+	getResourceInput.RestApiId = &apiId
+	getResourceInput.Limit = &limit
+	getResourceInput.Embed = embed
+	apiResources, error := apigw.GetResources(&getResourceInput)
+
+	if error != nil {
+		return false
+	}
+
+	var items []*apigateway.Resource
+	if apiResources != nil {
+		items = apiResources.Items
+	}
+
+	if items != nil {
+		for _, ingressRule := range instance.Spec.Rules {
+			if ingressRule.HTTP == nil {
+				continue
+			}
+
+			for _, path := range ingressRule.HTTP.Paths {
+				for _, apiItem := range items {
+					if (!strings.Contains(*apiItem.Path, path.Path)) && (!strings.Contains(path.Path, *apiItem.Path)) {
+						return true
+					}
+				}
+			}
+
+		}
 	}
 
 	return false

@@ -293,7 +293,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, r.Update(context.TODO(), instance)
 	}
 
-	if cfn.IsComplete(*stack.StackStatus) && shouldUpdate(stack, instance) {
+	if cfn.IsComplete(*stack.StackStatus) && shouldUpdate(stack, instance, r.apigatewaySvc) {
 		r.log.Info("updating apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name))
 		if err := r.update(instance); err != nil {
 			return reconcile.Result{}, err
