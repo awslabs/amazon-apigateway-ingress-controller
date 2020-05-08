@@ -18,6 +18,10 @@ func getCustomDomainName(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationCustomDomainName]
 }
 
+func getCFStackUpdateTimeout(ingress *extensionsv1beta1.Ingress) string {
+	return ingress.ObjectMeta.Annotations[IngressAnnotationCFStackUpdateTimeout]
+}
+
 func getCertificateArn(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationCertificateArn]
 }
@@ -99,11 +103,31 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 				continue
 			}
 
+			//To identity newly added paths
 			for _, path := range ingressRule.HTTP.Paths {
+				var needUpdates bool = true
 				for _, apiItem := range items {
-					if (!strings.Contains(*apiItem.Path, path.Path)) && (!strings.Contains(path.Path, *apiItem.Path)) {
-						return true
+					if strings.Compare(path.Path, *apiItem.Path) == 0 {
+						needUpdates = false
+						break
 					}
+				}
+				if needUpdates {
+					return true
+				}
+			}
+
+			//To identity removed paths
+			for _, apiItem := range items {
+				var needUpdates bool = true
+				for _, path := range ingressRule.HTTP.Paths {
+					if strings.HasPrefix(*apiItem.Path, path.Path) || strings.HasPrefix(path.Path, *apiItem.Path) {
+						needUpdates = false
+						break
+					}
+				}
+				if needUpdates {
+					return true
 				}
 			}
 
