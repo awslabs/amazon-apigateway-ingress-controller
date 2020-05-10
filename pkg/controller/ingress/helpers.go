@@ -18,10 +18,6 @@ func getCustomDomainName(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationCustomDomainName]
 }
 
-func getCFStackUpdateTimeout(ingress *extensionsv1beta1.Ingress) string {
-	return ingress.ObjectMeta.Annotations[IngressAnnotationCFStackUpdateTimeout]
-}
-
 func getCertificateArn(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationCertificateArn]
 }

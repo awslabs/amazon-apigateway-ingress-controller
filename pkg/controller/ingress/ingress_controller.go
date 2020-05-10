@@ -19,7 +19,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -58,18 +57,17 @@ import (
 )
 
 const (
-	ingressNameLengthLimit                = 51
-	FinalizerCFNStack                     = "apigateway.networking.amazonaws.com/ingress-finalizer"
-	IngressClassAnnotation                = "kubernetes.io/ingress.class"
-	IngressAnnotationNodeSelector         = "apigateway.ingress.kubernetes.io/node-selector"
-	IngressAnnotationClientArns           = "apigateway.ingress.kubernetes.io/client-arns"
-	IngressAnnotationCFStackUpdateTimeout = "apigateway.ingress.kubernetes.io/cf-stack-update-timeout-seconds"
-	IngressAnnotationCustomDomainName     = "apigateway.ingress.kubernetes.io/custom-domain-name"
-	IngressAnnotationCertificateArn       = "apigateway.ingress.kubernetes.io/certificate-arn"
-	IngressAnnotationStageName            = "apigateway.ingress.kubernetes.io/stage-name"
-	IngressAnnotationNginxReplicas        = "apigateway.ingress.kubernetes.io/nginx-replicas"
-	IngressAnnotationNginxImage           = "apigateway.ingress.kubernetes.io/nginx-image"
-	IngressAnnotationNginxServicePort     = "apigateway.ingress.kubernetes.io/nginx-service-port"
+	ingressNameLengthLimit            = 51
+	FinalizerCFNStack                 = "apigateway.networking.amazonaws.com/ingress-finalizer"
+	IngressClassAnnotation            = "kubernetes.io/ingress.class"
+	IngressAnnotationNodeSelector     = "apigateway.ingress.kubernetes.io/node-selector"
+	IngressAnnotationClientArns       = "apigateway.ingress.kubernetes.io/client-arns"
+	IngressAnnotationCustomDomainName = "apigateway.ingress.kubernetes.io/custom-domain-name"
+	IngressAnnotationCertificateArn   = "apigateway.ingress.kubernetes.io/certificate-arn"
+	IngressAnnotationStageName        = "apigateway.ingress.kubernetes.io/stage-name"
+	IngressAnnotationNginxReplicas    = "apigateway.ingress.kubernetes.io/nginx-replicas"
+	IngressAnnotationNginxImage       = "apigateway.ingress.kubernetes.io/nginx-image"
+	IngressAnnotationNginxServicePort = "apigateway.ingress.kubernetes.io/nginx-service-port"
 )
 
 var (
@@ -292,12 +290,8 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	if cfn.IsComplete(*stack.StackStatus) == false {
 		r.log.Info("Not complete, requeuing", zap.String("status", *stack.StackStatus))
-		// Reading default timeout from annotations and increasing default value to 60 as update cf stack takes time
-		timeout, err := strconv.Atoi(getCFStackUpdateTimeout(instance))
-		if err != nil {
-			timeout = 60
-		}
-		return reconcile.Result{RequeueAfter: time.Duration(timeout) * time.Second}, r.Update(context.TODO(), instance)
+		// increasing timout value to 30 as create/update cf stack takes time and quick update gives errors sometimes
+		return reconcile.Result{RequeueAfter: 30 * time.Second}, r.Update(context.TODO(), instance)
 	}
 
 	if cfn.IsComplete(*stack.StackStatus) && shouldUpdate(stack, instance, r.apigatewaySvc) {
