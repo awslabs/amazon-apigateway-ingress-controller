@@ -291,7 +291,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	if cfn.IsComplete(*stack.StackStatus) == false {
 		r.log.Info("Not complete, requeuing", zap.String("status", *stack.StackStatus))
 		// increasing timout value to 30 as create/update cf stack takes time and quick update gives errors sometimes
-		return reconcile.Result{RequeueAfter: 30 * time.Second}, r.Update(context.TODO(), instance)
+		return reconcile.Result{RequeueAfter: 20 * time.Second}, r.Update(context.TODO(), instance)
 	}
 
 	if cfn.IsComplete(*stack.StackStatus) && shouldUpdate(stack, instance, r.apigatewaySvc) {
