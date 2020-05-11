@@ -14,6 +14,15 @@ import (
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 )
 
+func getAPIEndpointTypes(ingress *extensionsv1beta1.Ingress) string {
+	//Defualt type will be EDGE
+	var endpointTypes string = ingress.ObjectMeta.Annotations[IngressAnnotationEndpointTypes]
+	if endpointTypes == "" {
+		endpointTypes = "EDGE"
+	}
+	return endpointTypes
+}
+
 func getCustomDomainName(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationCustomDomainName]
 }

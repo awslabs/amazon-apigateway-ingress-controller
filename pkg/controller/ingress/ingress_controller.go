@@ -68,6 +68,7 @@ const (
 	IngressAnnotationNginxReplicas    = "apigateway.ingress.kubernetes.io/nginx-replicas"
 	IngressAnnotationNginxImage       = "apigateway.ingress.kubernetes.io/nginx-image"
 	IngressAnnotationNginxServicePort = "apigateway.ingress.kubernetes.io/nginx-service-port"
+	IngressAnnotationEndpointTypes    = "apigateway.ingress.kubernetes.io/apigw-endpoint-type"
 )
 
 var (
@@ -641,6 +642,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		StageName:        getStageName(instance),
 		CustomDomainName: getCustomDomainName(instance),
 		CertificateArn:   getCertificateArn(instance),
+		APIEndpointTypes: getAPIEndpointTypes(instance),
 	})
 
 	b, err := cfnTemplate.YAML()
@@ -691,6 +693,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress) error {
 		NodePort:         int(svc.Spec.Ports[0].NodePort),
 		CustomDomainName: getCustomDomainName(instance),
 		CertificateArn:   getCertificateArn(instance),
+		APIEndpointTypes: getAPIEndpointTypes(instance),
 	})
 	b, err := cfnTemplate.YAML()
 	if err != nil {

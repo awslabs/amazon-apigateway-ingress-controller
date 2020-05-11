@@ -66,11 +66,11 @@ func buildAWSApiGatewayResource(ref, part string) *resources.AWSApiGatewayResour
 	}
 }
 
-func buildAWSApiGatewayRestAPI(arns []string) *resources.AWSApiGatewayRestApi {
+func buildAWSApiGatewayRestAPI(arns []string, apiEPTypes string) *resources.AWSApiGatewayRestApi {
 	return &resources.AWSApiGatewayRestApi{
 		ApiKeySourceType: "HEADER",
 		EndpointConfiguration: &resources.AWSApiGatewayRestApi_EndpointConfiguration{
-			Types: []string{"EDGE"},
+			Types: []string{apiEPTypes},
 		},
 		Name: cfn.Ref("AWS::StackName"),
 		Policy: &PolicyDocument{
@@ -232,6 +232,7 @@ type TemplateConfig struct {
 	Arns             []string
 	CustomDomainName string
 	CertificateArn   string
+	APIEndpointTypes string
 }
 
 func BuildApiGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
@@ -259,7 +260,7 @@ func BuildApiGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Resources[fmt.Sprintf("SecurityGroupIngress%d", i)] = sgI
 	}
 
-	restAPI := buildAWSApiGatewayRestAPI(cfg.Arns)
+	restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointTypes)
 	template.Resources["RestAPI"] = restAPI
 
 	deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames)
