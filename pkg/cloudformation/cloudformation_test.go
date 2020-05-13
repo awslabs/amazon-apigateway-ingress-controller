@@ -8,8 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/awslabs/amazon-apigateway-ingress-controller/pkg/network"
-	"github.com/awslabs/goformation/cloudformation"
-	cfn "github.com/awslabs/goformation/cloudformation"
+	cfn "github.com/awslabs/goformation/v4/cloudformation"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
@@ -18,7 +17,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 	tests := []struct {
 		name string
 		args *TemplateConfig
-		want *cloudformation.Template
+		want *cfn.Template
 	}{
 		{
 			name: "generates template without custom domain",
@@ -51,16 +50,16 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 				StageName: "baz",
 				NodePort:  30123,
 			},
-			want: &cloudformation.Template{
-				Resources: cloudformation.Resources{
+			want: &cfn.Template{
+				Resources: cfn.Resources{
 					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"})),
 					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"})),
 					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"})),
 					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"})),
-					"Resourceapi":              buildAWSApiGatewayResource(cloudformation.GetAtt("RestAPI", "RootResourceId"), "api"),
-					"Resourceapiv1":            buildAWSApiGatewayResource(cloudformation.Ref("Resourceapi"), "v1"),
-					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cloudformation.Ref("Resourceapiv1"), "foobar"),
-					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cloudformation.Ref("Resourceapiv1foobar"), "{proxy+}"),
+					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar"), "{proxy+}"),
 					"TargetGroup":              buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
 					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
@@ -70,8 +69,8 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 				},
 				Outputs: map[string]interface{}{
-					"RestApiId":          Output{Value: cloudformation.Ref("RestAPI")},
-					"APIGatewayEndpoint": Output{Value: cloudformation.Join("", []string{"https://", cloudformation.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"RestApiId":          Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
 					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
 				},
 			},
@@ -109,16 +108,16 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 				CustomDomainName: "example.com",
 				CertificateArn:   "arn::foobar",
 			},
-			want: &cloudformation.Template{
-				Resources: cloudformation.Resources{
+			want: &cfn.Template{
+				Resources: cfn.Resources{
 					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"})),
 					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"})),
 					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"})),
 					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"})),
-					"Resourceapi":              buildAWSApiGatewayResource(cloudformation.GetAtt("RestAPI", "RootResourceId"), "api"),
-					"Resourceapiv1":            buildAWSApiGatewayResource(cloudformation.Ref("Resourceapi"), "v1"),
-					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cloudformation.Ref("Resourceapiv1"), "foobar"),
-					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cloudformation.Ref("Resourceapiv1foobar"), "{proxy+}"),
+					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar"), "{proxy+}"),
 					"TargetGroup":              buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
 					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
@@ -129,8 +128,8 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"CustomDomain":             buildCustomDomain("example.com", "arn::foobar"),
 				},
 				Outputs: map[string]interface{}{
-					"RestApiId":          Output{Value: cloudformation.Ref("RestAPI")},
-					"APIGatewayEndpoint": Output{Value: cloudformation.Join("", []string{"https://", cloudformation.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"RestApiId":          Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
 					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
 				},
 			},

@@ -6,8 +6,12 @@ import (
 	"strings"
 
 	"github.com/awslabs/amazon-apigateway-ingress-controller/pkg/network"
-	cfn "github.com/awslabs/goformation/cloudformation"
-	"github.com/awslabs/goformation/cloudformation/resources"
+	cfn "github.com/awslabs/goformation/v4/cloudformation"
+	"github.com/awslabs/goformation/v4/cloudformation/apigateway"
+	"github.com/awslabs/goformation/v4/cloudformation/ec2"
+	"github.com/awslabs/goformation/v4/cloudformation/elasticloadbalancingv2"
+	"github.com/awslabs/goformation/v4/cloudformation/tags"
+	"github.com/awslabs/goformation/v4/cloudformation/wafv2"
 
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 )
@@ -58,18 +62,18 @@ func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIng
 	return m
 }
 
-func buildAWSApiGatewayResource(ref, part string) *resources.AWSApiGatewayResource {
-	return &resources.AWSApiGatewayResource{
+func buildAWSApiGatewayResource(ref, part string) *apigateway.Resource {
+	return &apigateway.Resource{
 		ParentId:  ref,
 		PathPart:  part,
 		RestApiId: cfn.Ref("RestAPI"),
 	}
 }
 
-func buildAWSApiGatewayRestAPI(arns []string, apiEPTypes string) *resources.AWSApiGatewayRestApi {
-	return &resources.AWSApiGatewayRestApi{
+func buildAWSApiGatewayRestAPI(arns []string, apiEPTypes string) *apigateway.RestApi {
+	return &apigateway.RestApi{
 		ApiKeySourceType: "HEADER",
-		EndpointConfiguration: &resources.AWSApiGatewayRestApi_EndpointConfiguration{
+		EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
 			Types: []string{apiEPTypes},
 		},
 		Name: cfn.Ref("AWS::StackName"),
@@ -87,8 +91,15 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPTypes string) *resources.AWSA
 	}
 }
 
-func buildAWSApiGatewayDeployment(stageName string, dependsOn []string) *resources.AWSApiGatewayDeployment {
-	d := &resources.AWSApiGatewayDeployment{
+func buildAWSWAFWebACLAssociation() *wafv2.WebACLAssociation {
+	return &wafv2.WebACLAssociation{
+		WebACLArn:   cfn.GetAtt("APIGWWebACL", "Arn"),
+		ResourceArn: cfn.Ref("RestAPI"),
+	}
+}
+
+func buildAWSApiGatewayDeployment(stageName string, dependsOn []string) *apigateway.Deployment {
+	d := &apigateway.Deployment{
 		RestApiId: cfn.Ref("RestAPI"),
 		StageName: stageName,
 	}
@@ -98,18 +109,18 @@ func buildAWSApiGatewayDeployment(stageName string, dependsOn []string) *resourc
 	// This isn't the worst thing in the world - and - I considered refactoring - but I like how simple this is for now.
 	// Also the order doesn't matter to CFN in the end.
 	sort.Strings(dependsOn)
-	d.SetDependsOn(dependsOn)
+	d.AWSCloudFormationDependsOn = dependsOn
 
 	return d
 }
 
-func buildAWSElasticLoadBalancingV2Listener() *resources.AWSElasticLoadBalancingV2Listener {
-	return &resources.AWSElasticLoadBalancingV2Listener{
+func buildAWSElasticLoadBalancingV2Listener() *elasticloadbalancingv2.Listener {
+	return &elasticloadbalancingv2.Listener{
 		LoadBalancerArn: cfn.Ref("LoadBalancer"),
 		Protocol:        "TCP",
 		Port:            80,
-		DefaultActions: []resources.AWSElasticLoadBalancingV2Listener_Action{
-			resources.AWSElasticLoadBalancingV2Listener_Action{
+		DefaultActions: []elasticloadbalancingv2.Listener_Action{
+			elasticloadbalancingv2.Listener_Action{
 				TargetGroupArn: cfn.Ref("TargetGroup"),
 				Type:           "forward",
 			},
@@ -117,12 +128,12 @@ func buildAWSElasticLoadBalancingV2Listener() *resources.AWSElasticLoadBalancing
 	}
 }
 
-func buildAWSElasticLoadBalancingV2LoadBalancer(subnetIDs []string) *resources.AWSElasticLoadBalancingV2LoadBalancer {
-	return &resources.AWSElasticLoadBalancingV2LoadBalancer{
+func buildAWSElasticLoadBalancingV2LoadBalancer(subnetIDs []string) *elasticloadbalancingv2.LoadBalancer {
+	return &elasticloadbalancingv2.LoadBalancer{
 		IpAddressType: "ipv4",
 		Scheme:        "internal",
 		Subnets:       subnetIDs,
-		Tags: []resources.Tag{
+		Tags: []tags.Tag{
 			{
 				Key:   "com.github.amazon-apigateway-ingress-controller/stack",
 				Value: cfn.Ref("AWS::StackName"),
@@ -132,13 +143,13 @@ func buildAWSElasticLoadBalancingV2LoadBalancer(subnetIDs []string) *resources.A
 	}
 }
 
-func buildAWSElasticLoadBalancingV2TargetGroup(vpcID string, instanceIDs []string, nodePort int, dependsOn []string) *resources.AWSElasticLoadBalancingV2TargetGroup {
-	targets := make([]resources.AWSElasticLoadBalancingV2TargetGroup_TargetDescription, len(instanceIDs))
+func buildAWSElasticLoadBalancingV2TargetGroup(vpcID string, instanceIDs []string, nodePort int, dependsOn []string) *elasticloadbalancingv2.TargetGroup {
+	targets := make([]elasticloadbalancingv2.TargetGroup_TargetDescription, len(instanceIDs))
 	for i, instanceID := range instanceIDs {
-		targets[i] = resources.AWSElasticLoadBalancingV2TargetGroup_TargetDescription{Id: instanceID}
+		targets[i] = elasticloadbalancingv2.TargetGroup_TargetDescription{Id: instanceID}
 	}
 
-	return &resources.AWSElasticLoadBalancingV2TargetGroup{
+	return &elasticloadbalancingv2.TargetGroup{
 		HealthCheckIntervalSeconds: 30,
 		HealthCheckPort:            "traffic-port",
 		HealthCheckProtocol:        "TCP",
@@ -146,7 +157,7 @@ func buildAWSElasticLoadBalancingV2TargetGroup(vpcID string, instanceIDs []strin
 		HealthyThresholdCount:      3,
 		Port:                       nodePort,
 		Protocol:                   "TCP",
-		Tags: []resources.Tag{
+		Tags: []tags.Tag{
 			{
 				Key:   "com.github.amazon-apigateway-ingress-controller/stack",
 				Value: cfn.Ref("AWS::StackName"),
@@ -160,19 +171,19 @@ func buildAWSElasticLoadBalancingV2TargetGroup(vpcID string, instanceIDs []strin
 
 }
 
-func buildAWSApiGatewayVpcLink(dependsOn []string) *resources.AWSApiGatewayVpcLink {
-	r := &resources.AWSApiGatewayVpcLink{
+func buildAWSApiGatewayVpcLink(dependsOn []string) *apigateway.VpcLink {
+	r := &apigateway.VpcLink{
 		Name:       cfn.Ref("AWS::StackName"),
 		TargetArns: []string{cfn.Ref("LoadBalancer")},
 	}
 
-	r.SetDependsOn(dependsOn)
+	r.AWSCloudFormationDependsOn = dependsOn
 
 	return r
 }
 
-func buildAWSApiGatewayMethod(resourceLogicalName, path string) *resources.AWSApiGatewayMethod {
-	m := &resources.AWSApiGatewayMethod{
+func buildAWSApiGatewayMethod(resourceLogicalName, path string) *apigateway.Method {
+	m := &apigateway.Method{
 		RequestParameters: map[string]bool{
 			"method.request.path.proxy": true,
 		},
@@ -180,7 +191,7 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string) *resources.AWSAp
 		HttpMethod:        "ANY",
 		ResourceId:        cfn.Ref(resourceLogicalName),
 		RestApiId:         cfn.Ref("RestAPI"),
-		Integration: &resources.AWSApiGatewayMethod_Integration{
+		Integration: &apigateway.Method_Integration{
 			ConnectionId:          cfn.Ref("VPCLink"),
 			ConnectionType:        "VPC_LINK",
 			IntegrationHttpMethod: "ANY",
@@ -195,14 +206,14 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string) *resources.AWSAp
 		},
 	}
 
-	m.SetDependsOn([]string{"LoadBalancer"})
+	m.AWSCloudFormationDependsOn = []string{"LoadBalancer"}
 	return m
 }
 
-func buildAWSEC2SecurityGroupIngresses(securityGroupIds []string, cidr string, nodePort int) []*resources.AWSEC2SecurityGroupIngress {
-	sgIngresses := make([]*resources.AWSEC2SecurityGroupIngress, len(securityGroupIds))
+func buildAWSEC2SecurityGroupIngresses(securityGroupIds []string, cidr string, nodePort int) []*ec2.SecurityGroupIngress {
+	sgIngresses := make([]*ec2.SecurityGroupIngress, len(securityGroupIds))
 	for i, sgID := range securityGroupIds {
-		sgIngresses[i] = &resources.AWSEC2SecurityGroupIngress{
+		sgIngresses[i] = &ec2.SecurityGroupIngress{
 			IpProtocol: "TCP",
 			CidrIp:     cidr,
 			FromPort:   nodePort,
@@ -214,11 +225,11 @@ func buildAWSEC2SecurityGroupIngresses(securityGroupIds []string, cidr string, n
 	return sgIngresses
 }
 
-func buildCustomDomain(domainName, certificateArn string) *resources.AWSApiGatewayDomainName {
-	return &resources.AWSApiGatewayDomainName{
+func buildCustomDomain(domainName, certificateArn string) *apigateway.DomainName {
+	return &apigateway.DomainName{
 		CertificateArn: certificateArn,
 		DomainName:     domainName,
-		EndpointConfiguration: &resources.AWSApiGatewayDomainName_EndpointConfiguration{
+		EndpointConfiguration: &apigateway.DomainName_EndpointConfiguration{
 			Types: []string{"EDGE"},
 		},
 	}
@@ -242,7 +253,7 @@ func BuildApiGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	methodLogicalNames := []string{}
 	resourceMap := mapApiGatewayMethodsAndResourcesFromPaths(paths)
 	for k, resource := range resourceMap {
-		if _, ok := resource.(*resources.AWSApiGatewayMethod); ok {
+		if _, ok := resource.(*apigateway.Method); ok {
 			methodLogicalNames = append(methodLogicalNames, k)
 		}
 

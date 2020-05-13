@@ -174,9 +174,9 @@ func (r *ReconcileIngress) fetchNetworkingInfo(instance *extensionsv1beta1.Ingre
 		Items: []corev1.Node{},
 	}
 
-	if err := r.Client.List(context.TODO(), &client.ListOptions{
+	if err := r.Client.List(context.TODO(), &nodes, &client.ListOptions{
 		LabelSelector: getNodeSelector(instance),
-	}, &nodes); err != nil {
+	}); err != nil {
 		return nil, err
 	}
 
