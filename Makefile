@@ -6,8 +6,7 @@ all: test manager
 
 # Run tests
 test: generate fmt vet manifests
-	echo "diabling tests"
-	#go test ./pkg/... ./cmd/... -coverprofile cover.out
+	go test ./pkg/... ./cmd/... -coverprofile cover.out
 
 # Build manager binary
 manager: generate fmt vet
@@ -48,7 +47,7 @@ endif
 docker-build: test
 	docker build . -t ${IMG}
 	@echo "updating kustomize image patch file for manager resource"
-	#sed -i '' -e 's@image: .*@image: '"${IMG}"'@' -e 's@iam.amazonaws.com/role: .*@iam.amazonaws.com/role: '"${IAMROLEARN}"'@' ./config/default/manager_image_patch.yaml
+	sed -i '' -e 's@image: .*@image: '"${IMG}"'@' -e 's@iam.amazonaws.com/role: .*@iam.amazonaws.com/role: '"${IAMROLEARN}"'@' ./config/default/manager_image_patch.yaml
 
 # Push the docker image
 docker-push:
