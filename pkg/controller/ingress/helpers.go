@@ -14,13 +14,41 @@ import (
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 )
 
-func getAPIEndpointTypes(ingress *extensionsv1beta1.Ingress) string {
-	//Defualt type will be EDGE
-	var endpointTypes string = ingress.ObjectMeta.Annotations[IngressAnnotationEndpointTypes]
-	if endpointTypes == "" {
-		endpointTypes = "EDGE"
+func getWAFScope(ingress *extensionsv1beta1.Ingress) string {
+	//Defualt type will be REGIONAL
+	var wafScope string = ingress.ObjectMeta.Annotations[IngressAnnotationWAFScope]
+	if wafScope == "" {
+		wafScope = "REGIONAL"
 	}
-	return endpointTypes
+	return wafScope
+}
+
+func getAPIEndpointType(ingress *extensionsv1beta1.Ingress) string {
+	//Defualt type will be EDGE
+	var endpointType string = ingress.ObjectMeta.Annotations[IngressAnnotationEndpointType]
+	if endpointType == "" {
+		endpointType = "EDGE"
+	}
+	return endpointType
+}
+
+func getWAFEnabled(ingress *extensionsv1beta1.Ingress) bool {
+	var wafEnabledStr string = ingress.ObjectMeta.Annotations[IngressAnnotationWAFEnabled]
+	var wafEnabled bool
+	var err error
+	if wafEnabledStr == "" {
+		wafEnabled = false
+	} else {
+		wafEnabled, err = strconv.ParseBool(wafEnabledStr)
+		if err != nil {
+			wafEnabled = false
+		}
+	}
+	return wafEnabled
+}
+
+func getWAFRulesJSON(ingress *extensionsv1beta1.Ingress) string {
+	return ingress.ObjectMeta.Annotations[IngressAnnotationWAFRulesCFJson]
 }
 
 func getCustomDomainName(ingress *extensionsv1beta1.Ingress) string {
@@ -29,6 +57,10 @@ func getCustomDomainName(ingress *extensionsv1beta1.Ingress) string {
 
 func getCertificateArn(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationCertificateArn]
+}
+
+func getHostedZoneName(ingress *extensionsv1beta1.Ingress) string {
+	return ingress.ObjectMeta.Annotations[IngressAnnotationHostedZoneName]
 }
 
 func getNodeSelector(ingress *extensionsv1beta1.Ingress) labels.Selector {
@@ -67,6 +99,14 @@ func getNginxServicePort(ingress *extensionsv1beta1.Ingress) int {
 	return p
 }
 
+func getCustomDomainCreatedHostname(mainStack *cloudformation.Stack) string {
+	return cfn.StackOutputMap(mainStack)[cfn.OutputKeyCustomDomainHostName]
+}
+
+func getCustomDomainCreatedHostedZoneID(mainStack *cloudformation.Stack) string {
+	return cfn.StackOutputMap(mainStack)[cfn.OutputKeyCustomDomainHostedZoneID]
+}
+
 func getNginxReplicas(ingress *extensionsv1beta1.Ingress) int {
 	replicas := ingress.ObjectMeta.Annotations[IngressAnnotationNginxReplicas]
 	r, err := strconv.Atoi(replicas)
@@ -77,12 +117,43 @@ func getNginxReplicas(ingress *extensionsv1beta1.Ingress) int {
 	return r
 }
 
+func shouldUpdateRoute53(mainStack *cloudformation.Stack, stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress) bool {
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyHostedZone] != getHostedZoneName(instance) {
+		return true
+	}
+	return false
+}
+
 func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress, apigw apigatewayiface.APIGatewayAPI) bool {
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS] != strings.Join(getArns(instance), ",") {
 		return true
 	}
 
-	apiId := cfn.StackOutputMap(stack)[cfn.OutputKeyRestApiID]
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != fmt.Sprintf("%t", getWAFEnabled(instance)) {
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyAPIEndpointType] != getAPIEndpointType(instance) {
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFScope] != getWAFScope(instance) {
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFRules] != getWAFRulesJSON(instance) {
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyCertARN] != getCertificateArn(instance) {
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyCustomDomain] != getCustomDomainName(instance) {
+		return true
+	}
+
+	apiId := cfn.StackOutputMap(stack)[cfn.OutputKeyRestAPIID]
 	var getResourceInput apigateway.GetResourcesInput
 	var limit int64
 	limit = 500

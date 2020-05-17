@@ -1,6 +1,7 @@
 package cloudformation
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -10,16 +11,47 @@ import (
 	"github.com/awslabs/goformation/v4/cloudformation/apigateway"
 	"github.com/awslabs/goformation/v4/cloudformation/ec2"
 	"github.com/awslabs/goformation/v4/cloudformation/elasticloadbalancingv2"
+	"github.com/awslabs/goformation/v4/cloudformation/route53"
 	"github.com/awslabs/goformation/v4/cloudformation/tags"
 	"github.com/awslabs/goformation/v4/cloudformation/wafv2"
 
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 )
 
+//const is constance values for resource naming used to build cf templates
 const (
-	OutputKeyRestApiID          = "RestAPIID"
-	OutputKeyAPIGatewayEndpoint = "APIGatewayEndpoint"
-	OutputKeyClientARNS         = "ClientARNS"
+	AWSStackName                         = "AWS::StackName"
+	AWSRegion                            = "AWS::Region"
+	APIMethodResourceID                  = "Method"
+	APIRootResourceResourceID            = "RootResourceId"
+	APIResourceResourceName              = "Resource"
+	APIResourceName                      = "RestAPI"
+	CustomDomainResourceName             = "CustomDomain"
+	DeploymentResourceName               = "Deployment"
+	DistributionDomainNameResourceName   = "DistributionDomainName"
+	DistributionHostedZoneIdResourceName = "DistributionHostedZoneId"
+	LoadBalancerResourceName             = "LoadBalancer"
+	ListnerResourceName                  = "Listener"
+	RegionalDomainNameResourceName       = "RegionalDomainName"
+	RegionalHostedZoneIdResourceName     = "RegionalHostedZoneId"
+	SecurityGroupIngressResourceName     = "SecurityGroupIngress"
+	TargetGroupResourceName              = "TargetGroup"
+	VPCLinkResourceName                  = "VPCLink"
+	WAFACLResourceName                   = "WAFAcl"
+	WAFAssociationResourceName           = "WAFAssociation"
+	Route53RecordResourceName            = "Route53RecordSet"
+	OutputKeyRestAPIID                   = "RestAPIID"
+	OutputKeyAPIGatewayEndpoint          = "APIGatewayEndpoint"
+	OutputKeyAPIEndpointType             = "APIGWEndpointType"
+	OutputKeyClientARNS                  = "ClientARNS"
+	OutputKeyCertARN                     = "SSLCertArn"
+	OutputKeyCustomDomain                = "CustomDomainName"
+	OutputKeyWAFEnabled                  = "WAFEnabled"
+	OutputKeyWAFRules                    = "WAFRules"
+	OutputKeyWAFScope                    = "WAFScope"
+	OutputKeyCustomDomainHostName        = "CustomDomainHostname"
+	OutputKeyCustomDomainHostedZoneID    = "CustomDomainHostedZoneID"
+	OutputKeyHostedZone                  = "HostedZone"
 )
 
 func toLogicalName(idx int, parts []string) string {
@@ -48,14 +80,14 @@ func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIng
 			if idx == 0 {
 				continue
 			}
-			ref := cfn.GetAtt("RestAPI", "RootResourceId")
+			ref := cfn.GetAtt(APIResourceName, APIRootResourceResourceID)
 			if idx > 1 {
-				ref = cfn.Ref(fmt.Sprintf("Resource%s", toLogicalName(idx-1, parts)))
+				ref = cfn.Ref(fmt.Sprintf("%s%s", APIResourceResourceName, toLogicalName(idx-1, parts)))
 			}
 
-			resourceLogicalName := fmt.Sprintf("Resource%s", toLogicalName(idx, parts))
+			resourceLogicalName := fmt.Sprintf("%s%s", APIResourceResourceName, toLogicalName(idx, parts))
 			m[resourceLogicalName] = buildAWSApiGatewayResource(ref, part)
-			m[fmt.Sprintf("Method%s", toLogicalName(idx, parts))] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts))
+			m[fmt.Sprintf("%s%s", APIMethodResourceID, toLogicalName(idx, parts))] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts))
 		}
 	}
 
@@ -66,17 +98,17 @@ func buildAWSApiGatewayResource(ref, part string) *apigateway.Resource {
 	return &apigateway.Resource{
 		ParentId:  ref,
 		PathPart:  part,
-		RestApiId: cfn.Ref("RestAPI"),
+		RestApiId: cfn.Ref(APIResourceName),
 	}
 }
 
-func buildAWSApiGatewayRestAPI(arns []string, apiEPTypes string) *apigateway.RestApi {
+func buildAWSApiGatewayRestAPI(arns []string, apiEPType string) *apigateway.RestApi {
 	return &apigateway.RestApi{
 		ApiKeySourceType: "HEADER",
 		EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
-			Types: []string{apiEPTypes},
+			Types: []string{apiEPType},
 		},
-		Name: cfn.Ref("AWS::StackName"),
+		Name: cfn.Ref(AWSStackName),
 		Policy: &PolicyDocument{
 			Version: "2012-10-17",
 			Statement: []Statement{
@@ -91,16 +123,51 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPTypes string) *apigateway.Res
 	}
 }
 
-func buildAWSWAFWebACLAssociation() *wafv2.WebACLAssociation {
-	return &wafv2.WebACLAssociation{
-		WebACLArn:   cfn.GetAtt("APIGWWebACL", "Arn"),
-		ResourceArn: cfn.Ref("RestAPI"),
+type EmptyAction struct{}
+
+func buildAWSWAFWebACL(webACLScope string, rules string) *wafv2.WebACL {
+	waf := &wafv2.WebACL{
+		Name:        cfn.Ref(AWSStackName),
+		Scope:       webACLScope,
+		Description: "This is an example WebACL",
+		DefaultAction: &wafv2.WebACL_DefaultAction{
+			Allow: EmptyAction{},
+		},
+		VisibilityConfig: &wafv2.WebACL_VisibilityConfig{
+			SampledRequestsEnabled:   true,
+			CloudWatchMetricsEnabled: true,
+			MetricName:               cfn.Sub(fmt.Sprintf("${%s}WebACLMetric", AWSStackName)),
+		},
 	}
+
+	if rules == "" {
+		return waf
+	}
+	var wafRules []wafv2.WebACL_Rule
+	if err := json.Unmarshal([]byte(rules), &wafRules); err != nil {
+		return waf
+	}
+	waf.Rules = wafRules
+
+	return waf
+}
+
+func buildAWSWAFWebACLAssociation(stage string) *wafv2.WebACLAssociation {
+	wafAssociation := &wafv2.WebACLAssociation{
+		WebACLArn:   cfn.GetAtt(WAFACLResourceName, "Arn"),
+		ResourceArn: cfn.Sub(fmt.Sprintf("arn:aws:apigateway:${%s}::/restapis/${%s}/stages/%s", AWSRegion, APIResourceName, stage)),
+	}
+
+	dependsOn := []string{DeploymentResourceName, WAFACLResourceName}
+	sort.Strings(dependsOn)
+	wafAssociation.AWSCloudFormationDependsOn = dependsOn
+
+	return wafAssociation
 }
 
 func buildAWSApiGatewayDeployment(stageName string, dependsOn []string) *apigateway.Deployment {
 	d := &apigateway.Deployment{
-		RestApiId: cfn.Ref("RestAPI"),
+		RestApiId: cfn.Ref(APIResourceName),
 		StageName: stageName,
 	}
 
@@ -116,12 +183,12 @@ func buildAWSApiGatewayDeployment(stageName string, dependsOn []string) *apigate
 
 func buildAWSElasticLoadBalancingV2Listener() *elasticloadbalancingv2.Listener {
 	return &elasticloadbalancingv2.Listener{
-		LoadBalancerArn: cfn.Ref("LoadBalancer"),
+		LoadBalancerArn: cfn.Ref(LoadBalancerResourceName),
 		Protocol:        "TCP",
 		Port:            80,
 		DefaultActions: []elasticloadbalancingv2.Listener_Action{
 			elasticloadbalancingv2.Listener_Action{
-				TargetGroupArn: cfn.Ref("TargetGroup"),
+				TargetGroupArn: cfn.Ref(TargetGroupResourceName),
 				Type:           "forward",
 			},
 		},
@@ -136,7 +203,7 @@ func buildAWSElasticLoadBalancingV2LoadBalancer(subnetIDs []string) *elasticload
 		Tags: []tags.Tag{
 			{
 				Key:   "com.github.amazon-apigateway-ingress-controller/stack",
-				Value: cfn.Ref("AWS::StackName"),
+				Value: cfn.Ref(AWSStackName),
 			},
 		},
 		Type: "network",
@@ -160,7 +227,7 @@ func buildAWSElasticLoadBalancingV2TargetGroup(vpcID string, instanceIDs []strin
 		Tags: []tags.Tag{
 			{
 				Key:   "com.github.amazon-apigateway-ingress-controller/stack",
-				Value: cfn.Ref("AWS::StackName"),
+				Value: cfn.Ref(AWSStackName),
 			},
 		},
 		TargetType:              "instance",
@@ -173,8 +240,8 @@ func buildAWSElasticLoadBalancingV2TargetGroup(vpcID string, instanceIDs []strin
 
 func buildAWSApiGatewayVpcLink(dependsOn []string) *apigateway.VpcLink {
 	r := &apigateway.VpcLink{
-		Name:       cfn.Ref("AWS::StackName"),
-		TargetArns: []string{cfn.Ref("LoadBalancer")},
+		Name:       cfn.Ref(AWSStackName),
+		TargetArns: []string{cfn.Ref(LoadBalancerResourceName)},
 	}
 
 	r.AWSCloudFormationDependsOn = dependsOn
@@ -190,9 +257,9 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string) *apigateway.Meth
 		AuthorizationType: "AWS_IAM",
 		HttpMethod:        "ANY",
 		ResourceId:        cfn.Ref(resourceLogicalName),
-		RestApiId:         cfn.Ref("RestAPI"),
+		RestApiId:         cfn.Ref(APIResourceName),
 		Integration: &apigateway.Method_Integration{
-			ConnectionId:          cfn.Ref("VPCLink"),
+			ConnectionId:          cfn.Ref(VPCLinkResourceName),
 			ConnectionType:        "VPC_LINK",
 			IntegrationHttpMethod: "ANY",
 			PassthroughBehavior:   "WHEN_NO_MATCH",
@@ -202,11 +269,11 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string) *apigateway.Meth
 			},
 			Type:            "HTTP_PROXY",
 			TimeoutInMillis: 29000,
-			Uri:             cfn.Join("", []string{"http://", cfn.GetAtt("LoadBalancer", "DNSName"), path}),
+			Uri:             cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
 		},
 	}
 
-	m.AWSCloudFormationDependsOn = []string{"LoadBalancer"}
+	m.AWSCloudFormationDependsOn = []string{LoadBalancerResourceName}
 	return m
 }
 
@@ -225,16 +292,27 @@ func buildAWSEC2SecurityGroupIngresses(securityGroupIds []string, cidr string, n
 	return sgIngresses
 }
 
-func buildCustomDomain(domainName, certificateArn string) *apigateway.DomainName {
+func buildCustomDomain(domainName string, certificateArn string, apiEPType string) *apigateway.DomainName {
+	if apiEPType == "REGIONAL" {
+		return &apigateway.DomainName{
+			RegionalCertificateArn: certificateArn,
+			DomainName:             domainName,
+			EndpointConfiguration: &apigateway.DomainName_EndpointConfiguration{
+				Types: []string{apiEPType},
+			},
+		}
+	}
 	return &apigateway.DomainName{
 		CertificateArn: certificateArn,
 		DomainName:     domainName,
 		EndpointConfiguration: &apigateway.DomainName_EndpointConfiguration{
-			Types: []string{"EDGE"},
+			Types: []string{apiEPType},
 		},
 	}
+
 }
 
+//TemplateConfig is the structure of configuration used to provide data to build the cf template
 type TemplateConfig struct {
 	Network          *network.Network
 	Rule             extensionsv1beta1.IngressRule
@@ -243,12 +321,26 @@ type TemplateConfig struct {
 	Arns             []string
 	CustomDomainName string
 	CertificateArn   string
-	APIEndpointTypes string
+	APIEndpointType  string
+	WAFEnabled       bool
+	WAFRulesJSON     string
+	WAFScope         string
 }
 
-func BuildApiGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
+// BuildAPIGatewayTemplateFromIngressRule generates the cloudformation template according to the config provided
+func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	template := cfn.NewTemplate()
 	paths := cfg.Rule.IngressRuleValue.HTTP.Paths
+
+	//Making default type edge
+	if cfg.APIEndpointType == "" {
+		cfg.APIEndpointType = "EDGE"
+	}
+
+	//Making default regional as cloudfront is not supported in all regions
+	if cfg.WAFEnabled && cfg.WAFScope == "" {
+		cfg.WAFScope = "REGIONAL"
+	}
 
 	methodLogicalNames := []string{}
 	resourceMap := mapApiGatewayMethodsAndResourcesFromPaths(paths)
@@ -260,39 +352,165 @@ func BuildApiGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Resources[k] = resource
 	}
 
-	targetGroup := buildAWSElasticLoadBalancingV2TargetGroup(*cfg.Network.Vpc.VpcId, cfg.Network.InstanceIDs, cfg.NodePort, []string{"LoadBalancer"})
-	template.Resources["TargetGroup"] = targetGroup
+	targetGroup := buildAWSElasticLoadBalancingV2TargetGroup(*cfg.Network.Vpc.VpcId, cfg.Network.InstanceIDs, cfg.NodePort, []string{LoadBalancerResourceName})
+	template.Resources[TargetGroupResourceName] = targetGroup
 
 	listener := buildAWSElasticLoadBalancingV2Listener()
-	template.Resources["Listener"] = listener
+	template.Resources[ListnerResourceName] = listener
 
 	securityGroupIngresses := buildAWSEC2SecurityGroupIngresses(cfg.Network.SecurityGroupIDs, *cfg.Network.Vpc.CidrBlock, cfg.NodePort)
 	for i, sgI := range securityGroupIngresses {
-		template.Resources[fmt.Sprintf("SecurityGroupIngress%d", i)] = sgI
+		template.Resources[fmt.Sprintf("%s%d", SecurityGroupIngressResourceName, i)] = sgI
 	}
 
-	restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointTypes)
-	template.Resources["RestAPI"] = restAPI
+	restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType)
+	template.Resources[APIResourceName] = restAPI
 
 	deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames)
-	template.Resources["Deployment"] = deployment
+	template.Resources[DeploymentResourceName] = deployment
 
 	loadBalancer := buildAWSElasticLoadBalancingV2LoadBalancer(cfg.Network.SubnetIDs)
-	template.Resources["LoadBalancer"] = loadBalancer
+	template.Resources[LoadBalancerResourceName] = loadBalancer
 
-	vPCLink := buildAWSApiGatewayVpcLink([]string{"LoadBalancer"})
-	template.Resources["VPCLink"] = vPCLink
+	vPCLink := buildAWSApiGatewayVpcLink([]string{LoadBalancerResourceName})
+	template.Resources[VPCLinkResourceName] = vPCLink
 
 	if cfg.CustomDomainName != "" && cfg.CertificateArn != "" {
-		customDomain := buildCustomDomain(cfg.CustomDomainName, cfg.CertificateArn)
-		template.Resources["CustomDomain"] = customDomain
+		customDomain := buildCustomDomain(cfg.CustomDomainName, cfg.CertificateArn, cfg.APIEndpointType)
+		template.Resources[CustomDomainResourceName] = customDomain
 	}
 
-	template.Outputs = map[string]interface{}{
-		OutputKeyRestApiID:          Output{Value: cfn.Ref("RestAPI")},
-		OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
-		OutputKeyClientARNS:         Output{Value: strings.Join(cfg.Arns, ",")},
+	if cfg.WAFEnabled {
+		webACL := buildAWSWAFWebACL(cfg.WAFScope, cfg.WAFRulesJSON)
+		template.Resources[WAFACLResourceName] = webACL
+		webACLAssociation := buildAWSWAFWebACLAssociation(cfg.StageName)
+		template.Resources[WAFAssociationResourceName] = webACLAssociation
+	}
+
+	if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName != "" {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:                Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint:       Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:               Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:          Output{Value: cfg.APIEndpointType},
+			OutputKeyCertARN:                  Output{Value: cfg.CertificateArn},
+			OutputKeyCustomDomain:             Output{Value: cfg.CustomDomainName},
+			OutputKeyCustomDomainHostName:     Output{Value: cfn.GetAtt(CustomDomainResourceName, RegionalDomainNameResourceName)},
+			OutputKeyCustomDomainHostedZoneID: Output{Value: cfn.GetAtt(CustomDomainResourceName, RegionalHostedZoneIdResourceName)},
+			OutputKeyWAFEnabled:               Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
+			OutputKeyWAFRules:                 Output{Value: cfg.WAFRulesJSON},
+			OutputKeyWAFScope:                 Output{Value: cfg.WAFScope},
+		}
+	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName != "" {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:                Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint:       Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:               Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:          Output{Value: cfg.APIEndpointType},
+			OutputKeyCertARN:                  Output{Value: cfg.CertificateArn},
+			OutputKeyCustomDomain:             Output{Value: cfg.CustomDomainName},
+			OutputKeyCustomDomainHostName:     Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionDomainNameResourceName)},
+			OutputKeyCustomDomainHostedZoneID: Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionHostedZoneIdResourceName)},
+			OutputKeyWAFEnabled:               Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
+			OutputKeyWAFRules:                 Output{Value: cfg.WAFRulesJSON},
+			OutputKeyWAFScope:                 Output{Value: cfg.WAFScope},
+		}
+	} else if cfg.APIEndpointType == "REGIONAL" && !cfg.WAFEnabled && cfg.CustomDomainName != "" {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:                Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint:       Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:               Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:          Output{Value: cfg.APIEndpointType},
+			OutputKeyCertARN:                  Output{Value: cfg.CertificateArn},
+			OutputKeyCustomDomain:             Output{Value: cfg.CustomDomainName},
+			OutputKeyCustomDomainHostName:     Output{Value: cfn.GetAtt(CustomDomainResourceName, RegionalDomainNameResourceName)},
+			OutputKeyCustomDomainHostedZoneID: Output{Value: cfn.GetAtt(CustomDomainResourceName, RegionalHostedZoneIdResourceName)},
+		}
+	} else if cfg.APIEndpointType == "EDGE" && !cfg.WAFEnabled && cfg.CustomDomainName != "" {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:                Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint:       Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:               Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:          Output{Value: cfg.APIEndpointType},
+			OutputKeyCertARN:                  Output{Value: cfg.CertificateArn},
+			OutputKeyCustomDomain:             Output{Value: cfg.CustomDomainName},
+			OutputKeyCustomDomainHostName:     Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionDomainNameResourceName)},
+			OutputKeyCustomDomainHostedZoneID: Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionHostedZoneIdResourceName)},
+		}
+	} else if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName == "" {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:          Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:         Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:    Output{Value: cfg.APIEndpointType},
+			OutputKeyWAFEnabled:         Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
+			OutputKeyWAFRules:           Output{Value: cfg.WAFRulesJSON},
+			OutputKeyWAFScope:           Output{Value: cfg.WAFScope},
+		}
+	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName == "" {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:          Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:         Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:    Output{Value: cfg.APIEndpointType},
+			OutputKeyWAFEnabled:         Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
+			OutputKeyWAFRules:           Output{Value: cfg.WAFRulesJSON},
+			OutputKeyWAFScope:           Output{Value: cfg.WAFScope},
+		}
+	} else if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName == "" {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:          Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:         Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:    Output{Value: cfg.APIEndpointType},
+		}
+	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName == "" {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:          Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:         Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:    Output{Value: cfg.APIEndpointType},
+		}
 	}
 
 	return template
+}
+
+func buildCustomDomainRoute53Record(domainName string, hostedZoneName string, dnsName string, hostedZoneID string) *route53.RecordSet {
+	return &route53.RecordSet{
+		Name:           domainName,
+		HostedZoneName: hostedZoneName,
+		Type:           "A",
+		AliasTarget: &route53.RecordSet_AliasTarget{
+			DNSName:      dnsName,
+			HostedZoneId: hostedZoneID,
+		},
+	}
+}
+
+//Route53TemplateConfig is the structure of configuration used to provide data to build the cf template of route53
+type Route53TemplateConfig struct {
+	CustomDomainName         string
+	CustomDomainHostName     string
+	CustomDomainHostedZoneID string
+	HostedZoneName           string
+}
+
+// BuildAPIGatewayRoute53Template generates the cloudformation template according to the config provided
+func BuildAPIGatewayRoute53Template(cfg *Route53TemplateConfig) *cfn.Template {
+	route53Template := cfn.NewTemplate()
+
+	if cfg.HostedZoneName != "" {
+		recordSet := buildCustomDomainRoute53Record(cfg.CustomDomainName, cfg.HostedZoneName, cfg.CustomDomainHostName, cfg.CustomDomainHostedZoneID)
+		route53Template.Resources[Route53RecordResourceName] = recordSet
+	}
+
+	route53Template.Outputs = map[string]interface{}{
+		OutputKeyCustomDomainHostName:     Output{Value: cfg.CustomDomainHostName},
+		OutputKeyCustomDomainHostedZoneID: Output{Value: cfg.CustomDomainHostedZoneID},
+		OutputKeyCustomDomain:             Output{Value: cfg.CustomDomainName},
+		OutputKeyHostedZone:               Output{Value: cfg.HostedZoneName},
+	}
+
+	return route53Template
 }

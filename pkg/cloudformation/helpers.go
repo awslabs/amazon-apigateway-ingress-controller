@@ -16,6 +16,7 @@ var CompleteStatuses = []string{
 	cloudformation.StackStatusCreateComplete,
 	cloudformation.StackStatusUpdateComplete,
 	cloudformation.StackStatusDeleteComplete,
+	cloudformation.StackStatusUpdateRollbackComplete,
 }
 
 //FailedStatuses contains all CloudFormation status strings that we consider to be failed for a vpn
@@ -24,7 +25,6 @@ var FailedStatuses = []string{
 	cloudformation.StackStatusRollbackComplete,
 	cloudformation.StackStatusRollbackFailed,
 	cloudformation.StackStatusUpdateRollbackFailed,
-	cloudformation.StackStatusUpdateRollbackComplete,
 	cloudformation.StackStatusDeleteFailed,
 }
 

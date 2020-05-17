@@ -69,9 +69,266 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 				},
 				Outputs: map[string]interface{}{
-					"RestApiId":          Output{Value: cfn.Ref("RestAPI")},
+					"RestAPIID":          Output{Value: cfn.Ref("RestAPI")},
 					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
 					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":  Output{Value: "EDGE"},
+				},
+			},
+		},
+		{
+			name: "generates template with waf",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				Arns:         []string{"arn::foo"},
+				StageName:    "baz",
+				NodePort:     30123,
+				WAFEnabled:   true,
+				WAFRulesJSON: "[]",
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar"), "{proxy+}"),
+					"TargetGroup":              buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE"),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+					"WAFAcl":                   buildAWSWAFWebACL("REGIONAL", "[]"),
+					"WAFAssociation":           buildAWSWAFWebACLAssociation("baz"),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID":          Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":  Output{Value: "EDGE"},
+					"WAFEnabled":         Output{Value: "true"},
+					"WAFRules":           Output{Value: "[]"},
+					"WAFScope":           Output{Value: "REGIONAL"},
+				},
+			},
+		},
+		{
+			name: "generates template with waf regional api",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				Arns:            []string{"arn::foo"},
+				StageName:       "baz",
+				NodePort:        30123,
+				WAFEnabled:      true,
+				WAFRulesJSON:    "[]",
+				APIEndpointType: "REGIONAL",
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar"), "{proxy+}"),
+					"TargetGroup":              buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "REGIONAL"),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+					"WAFAcl":                   buildAWSWAFWebACL("REGIONAL", "[]"),
+					"WAFAssociation":           buildAWSWAFWebACLAssociation("baz"),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID":          Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":  Output{Value: "REGIONAL"},
+					"WAFEnabled":         Output{Value: "true"},
+					"WAFRules":           Output{Value: "[]"},
+					"WAFScope":           Output{Value: "REGIONAL"},
+				},
+			},
+		},
+		{
+			name: "generates template with waf null rules",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				Arns:       []string{"arn::foo"},
+				StageName:  "baz",
+				NodePort:   30123,
+				WAFEnabled: true,
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar"), "{proxy+}"),
+					"TargetGroup":              buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE"),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+					"WAFAcl":                   buildAWSWAFWebACL("REGIONAL", ""),
+					"WAFAssociation":           buildAWSWAFWebACLAssociation("baz"),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID":          Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":  Output{Value: "EDGE"},
+					"WAFEnabled":         Output{Value: "true"},
+					"WAFRules":           Output{Value: ""},
+					"WAFScope":           Output{Value: "REGIONAL"},
+				},
+			},
+		},
+		{
+			name: "generates template with waf error rules",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				Arns:         []string{"arn::foo"},
+				StageName:    "baz",
+				NodePort:     30123,
+				WAFEnabled:   true,
+				WAFRulesJSON: "wrongjson",
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar"), "{proxy+}"),
+					"TargetGroup":              buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE"),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+					"WAFAcl":                   buildAWSWAFWebACL("REGIONAL", ""),
+					"WAFAssociation":           buildAWSWAFWebACLAssociation("baz"),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID":          Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":  Output{Value: "EDGE"},
+					"WAFEnabled":         Output{Value: "true"},
+					"WAFRules":           Output{Value: "wrongjson"},
+					"WAFScope":           Output{Value: "REGIONAL"},
 				},
 			},
 		},
@@ -125,12 +382,225 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
 					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
-					"CustomDomain":             buildCustomDomain("example.com", "arn::foobar"),
+					"CustomDomain":             buildCustomDomain("example.com", "arn::foobar", "EDGE"),
 				},
 				Outputs: map[string]interface{}{
-					"RestApiId":          Output{Value: cfn.Ref("RestAPI")},
-					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
-					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"RestAPIID":                Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint":       Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":               Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":        Output{Value: "EDGE"},
+					"SSLCertArn":               Output{Value: "arn::foobar"},
+					"CustomDomainName":         Output{Value: "example.com"},
+					"CustomDomainHostname":     Output{Value: cfn.GetAtt("CustomDomain", "DistributionDomainName")},
+					"CustomDomainHostedZoneID": Output{Value: cfn.GetAtt("CustomDomain", "DistributionHostedZoneId")},
+				},
+			},
+		},
+		{
+			name: "generates template with custom domain regional api",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				Arns:             []string{"arn::foo"},
+				StageName:        "baz",
+				NodePort:         30123,
+				CustomDomainName: "example.com",
+				CertificateArn:   "arn::foobar",
+				APIEndpointType:  "REGIONAL",
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar"), "{proxy+}"),
+					"TargetGroup":              buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "REGIONAL"),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+					"CustomDomain":             buildCustomDomain("example.com", "arn::foobar", "REGIONAL"),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID":                Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint":       Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":               Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":        Output{Value: "REGIONAL"},
+					"SSLCertArn":               Output{Value: "arn::foobar"},
+					"CustomDomainName":         Output{Value: "example.com"},
+					"CustomDomainHostname":     Output{Value: cfn.GetAtt("CustomDomain", "RegionalDomainName")},
+					"CustomDomainHostedZoneID": Output{Value: cfn.GetAtt("CustomDomain", "RegionalHostedZoneId")},
+				},
+			},
+		},
+		{
+			name: "generates template with custom domain edge api with WAF",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				Arns:             []string{"arn::foo"},
+				StageName:        "baz",
+				NodePort:         30123,
+				CustomDomainName: "example.com",
+				CertificateArn:   "arn::foobar",
+				WAFEnabled:       true,
+				WAFRulesJSON:     "[]",
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar"), "{proxy+}"),
+					"TargetGroup":              buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE"),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+					"CustomDomain":             buildCustomDomain("example.com", "arn::foobar", "EDGE"),
+					"WAFAcl":                   buildAWSWAFWebACL("REGIONAL", "[]"),
+					"WAFAssociation":           buildAWSWAFWebACLAssociation("baz"),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID":                Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint":       Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":               Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":        Output{Value: "EDGE"},
+					"SSLCertArn":               Output{Value: "arn::foobar"},
+					"CustomDomainName":         Output{Value: "example.com"},
+					"CustomDomainHostname":     Output{Value: cfn.GetAtt("CustomDomain", "DistributionDomainName")},
+					"CustomDomainHostedZoneID": Output{Value: cfn.GetAtt("CustomDomain", "DistributionHostedZoneId")},
+					"WAFEnabled":               Output{Value: "true"},
+					"WAFRules":                 Output{Value: "[]"},
+					"WAFScope":                 Output{Value: "REGIONAL"},
+				},
+			},
+		},
+		{
+			name: "generates template with custom domain regional api with WAF",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				Arns:             []string{"arn::foo"},
+				StageName:        "baz",
+				NodePort:         30123,
+				CustomDomainName: "example.com",
+				CertificateArn:   "arn::foobar",
+				APIEndpointType:  "REGIONAL",
+				WAFEnabled:       true,
+				WAFRulesJSON:     "[]",
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"})),
+					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar"), "{proxy+}"),
+					"TargetGroup":              buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "REGIONAL"),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+					"CustomDomain":             buildCustomDomain("example.com", "arn::foobar", "REGIONAL"),
+					"WAFAcl":                   buildAWSWAFWebACL("REGIONAL", "[]"),
+					"WAFAssociation":           buildAWSWAFWebACLAssociation("baz"),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID":                Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint":       Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":               Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":        Output{Value: "REGIONAL"},
+					"SSLCertArn":               Output{Value: "arn::foobar"},
+					"CustomDomainName":         Output{Value: "example.com"},
+					"CustomDomainHostname":     Output{Value: cfn.GetAtt("CustomDomain", "RegionalDomainName")},
+					"CustomDomainHostedZoneID": Output{Value: cfn.GetAtt("CustomDomain", "RegionalHostedZoneId")},
+					"WAFEnabled":               Output{Value: "true"},
+					"WAFRules":                 Output{Value: "[]"},
+					"WAFScope":                 Output{Value: "REGIONAL"},
 				},
 			},
 		},
@@ -138,14 +608,82 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := BuildApiGatewayTemplateFromIngressRule(tt.args)
-
+			got := BuildAPIGatewayTemplateFromIngressRule(tt.args)
 			for k, resource := range got.Resources {
 				if !reflect.DeepEqual(resource, tt.want.Resources[k]) {
-					t.Errorf("Got Resources.%s = %v, want %v", k, got, tt.want)
+					t.Errorf("Got Resources.%s = %v, want %v", k, got.Resources, tt.want.Resources)
 				}
 			}
+			for k, resource := range got.Outputs {
+				if !reflect.DeepEqual(resource, tt.want.Outputs[k]) {
+					t.Errorf("Got Outputs.%s = %v, want %v", k, got.Outputs, tt.want.Outputs)
+				}
+			}
+		})
+	}
+}
 
+func TestBuildApiGatewayTemplateForRoute53(t *testing.T) {
+	tests := []struct {
+		name string
+		args *Route53TemplateConfig
+		want *cfn.Template
+	}{
+		{
+			name: "generates template for edge hosted zone",
+			args: &Route53TemplateConfig{
+				CustomDomainName:         "example.com",
+				CustomDomainHostName:     "d-example.aws.com",
+				CustomDomainHostedZoneID: "123234",
+				HostedZoneName:           "example.com",
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Route53RecordSet": buildCustomDomainRoute53Record("example.com", "example.com", "d-example.aws.com", "123234"),
+				},
+				Outputs: map[string]interface{}{
+					"CustomDomainHostname":     Output{Value: "d-example.aws.com"},
+					"CustomDomainHostedZoneID": Output{Value: "123234"},
+					"CustomDomainName":         Output{Value: "example.com"},
+					"HostedZone":               Output{Value: "example.com"},
+				},
+			},
+		},
+		{
+			name: "generates template for regional hosted zone",
+			args: &Route53TemplateConfig{
+				CustomDomainName:         "example.com",
+				CustomDomainHostName:     "d-example.aws.com",
+				CustomDomainHostedZoneID: "123234",
+				HostedZoneName:           "example.com",
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Route53RecordSet": buildCustomDomainRoute53Record("example.com", "example.com", "d-example.aws.com", "123234"),
+				},
+				Outputs: map[string]interface{}{
+					"CustomDomainHostname":     Output{Value: "d-example.aws.com"},
+					"CustomDomainHostedZoneID": Output{Value: "123234"},
+					"CustomDomainName":         Output{Value: "example.com"},
+					"HostedZone":               Output{Value: "example.com"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := BuildAPIGatewayRoute53Template(tt.args)
+			for k, resource := range got.Resources {
+				if !reflect.DeepEqual(resource, tt.want.Resources[k]) {
+					t.Errorf("Got Resources.%s = %v, want %v", k, got.Resources, tt.want.Resources)
+				}
+			}
+			for k, resource := range got.Outputs {
+				if !reflect.DeepEqual(resource, tt.want.Outputs[k]) {
+					t.Errorf("Got Outputs.%s = %v, want %v", k, got.Outputs, tt.want.Outputs)
+				}
+			}
 		})
 	}
 }

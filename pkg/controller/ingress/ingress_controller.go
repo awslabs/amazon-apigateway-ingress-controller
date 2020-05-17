@@ -59,6 +59,7 @@ import (
 const (
 	ingressNameLengthLimit            = 51
 	FinalizerCFNStack                 = "apigateway.networking.amazonaws.com/ingress-finalizer"
+	FinalizerRoute53CFNStack          = "apigateway.networking.amazonaws.com/route53-ingress-finalizer"
 	IngressClassAnnotation            = "kubernetes.io/ingress.class"
 	IngressAnnotationNodeSelector     = "apigateway.ingress.kubernetes.io/node-selector"
 	IngressAnnotationClientArns       = "apigateway.ingress.kubernetes.io/client-arns"
@@ -68,7 +69,12 @@ const (
 	IngressAnnotationNginxReplicas    = "apigateway.ingress.kubernetes.io/nginx-replicas"
 	IngressAnnotationNginxImage       = "apigateway.ingress.kubernetes.io/nginx-image"
 	IngressAnnotationNginxServicePort = "apigateway.ingress.kubernetes.io/nginx-service-port"
-	IngressAnnotationEndpointTypes    = "apigateway.ingress.kubernetes.io/apigw-endpoint-type"
+	IngressAnnotationEndpointType     = "apigateway.ingress.kubernetes.io/apigw-endpoint-type"
+	IngressAnnotationWAFEnabled       = "apigateway.ingress.kubernetes.io/waf-enabled"
+	IngressAnnotationWAFRulesCFJson   = "apigateway.ingress.kubernetes.io/waf-rule-cf-json"
+	IngressAnnotationWAFScope         = "apigateway.ingress.kubernetes.io/waf-scope"
+	IngressAnnotationHostedZoneName   = "apigateway.ingress.kubernetes.io/hosted-zone-name"
+	Route53StackNamePostfix           = "-route53"
 )
 
 var (
@@ -307,9 +313,9 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	outputs := cfn.StackOutputMap(stack)
 
 	// Deploy API so changes are applied after Update
-	r.log.Info("creating apigateway deployment", zap.String(cfn.OutputKeyRestApiID, outputs[cfn.OutputKeyRestApiID]), zap.String("stage", getStageName(instance)))
+	r.log.Info("creating apigateway deployment", zap.String(cfn.OutputKeyRestAPIID, outputs[cfn.OutputKeyRestAPIID]), zap.String("stage", getStageName(instance)))
 	if _, err := r.apigatewaySvc.CreateDeployment(&apigateway.CreateDeploymentInput{
-		RestApiId: aws.String(outputs[cfn.OutputKeyRestApiID]),
+		RestApiId: aws.String(outputs[cfn.OutputKeyRestAPIID]),
 		StageName: aws.String(getStageName(instance)),
 	}); err != nil {
 		r.log.Error("unable to deploy ApiGateway Rest API", zap.Error(err))
@@ -337,7 +343,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 		},
 	}
 
-	return reconcile.Result{}, r.Status().Update(context.TODO(), instance)
+	return r.reconcileRoute53(request, stack, instance)
 
 }
 
@@ -634,7 +640,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		return nil, err
 	}
 
-	cfnTemplate := cfn.BuildApiGatewayTemplateFromIngressRule(&cfn.TemplateConfig{
+	cfnTemplate := cfn.BuildAPIGatewayTemplateFromIngressRule(&cfn.TemplateConfig{
 		Rule:             instance.Spec.Rules[0],
 		Network:          network,
 		NodePort:         int(svc.Spec.Ports[0].NodePort),
@@ -642,7 +648,10 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		StageName:        getStageName(instance),
 		CustomDomainName: getCustomDomainName(instance),
 		CertificateArn:   getCertificateArn(instance),
-		APIEndpointTypes: getAPIEndpointTypes(instance),
+		APIEndpointType:  getAPIEndpointType(instance),
+		WAFEnabled:       getWAFEnabled(instance),
+		WAFRulesJSON:     getWAFRulesJSON(instance),
+		WAFScope:         getWAFScope(instance),
 	})
 
 	b, err := cfnTemplate.YAML()
@@ -665,7 +674,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		return nil, err
 	}
 
-	r.log.Info("cloudformation stack creating, setting finalizers", zap.String("StackName", instance.ObjectMeta.Name))
+	r.log.Info("cloudformation route53 stack creating, setting finalizers", zap.String("StackName", instance.ObjectMeta.Name))
 	instance.SetFinalizers(finalizers.AddFinalizer(instance, FinalizerCFNStack))
 
 	return instance, nil
@@ -685,7 +694,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress) error {
 		return err
 	}
 
-	cfnTemplate := cfn.BuildApiGatewayTemplateFromIngressRule(&cfn.TemplateConfig{
+	cfnTemplate := cfn.BuildAPIGatewayTemplateFromIngressRule(&cfn.TemplateConfig{
 		Rule:             instance.Spec.Rules[0],
 		Network:          network,
 		Arns:             getArns(instance),
@@ -693,7 +702,10 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress) error {
 		NodePort:         int(svc.Spec.Ports[0].NodePort),
 		CustomDomainName: getCustomDomainName(instance),
 		CertificateArn:   getCertificateArn(instance),
-		APIEndpointTypes: getAPIEndpointTypes(instance),
+		APIEndpointType:  getAPIEndpointType(instance),
+		WAFEnabled:       getWAFEnabled(instance),
+		WAFRulesJSON:     getWAFRulesJSON(instance),
+		WAFScope:         getWAFScope(instance),
 	})
 	b, err := cfnTemplate.YAML()
 	if err != nil {
@@ -716,4 +728,203 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress) error {
 	}
 
 	return nil
+}
+
+func (r *ReconcileIngress) createRoute53(instance *extensionsv1beta1.Ingress, mainStack *cloudformation.Stack) (*extensionsv1beta1.Ingress, error) {
+	stackName := fmt.Sprintf("%s%s", instance.ObjectMeta.Name, Route53StackNamePostfix)
+
+	hostedZoneName := getHostedZoneName(instance)
+	if hostedZoneName == "" {
+		return instance, nil
+	}
+
+	cfnTemplate := cfn.BuildAPIGatewayRoute53Template(&cfn.Route53TemplateConfig{
+		CustomDomainName:         getCustomDomainName(instance),
+		HostedZoneName:           getHostedZoneName(instance),
+		CustomDomainHostName:     getCustomDomainCreatedHostname(mainStack),
+		CustomDomainHostedZoneID: getCustomDomainCreatedHostedZoneID(mainStack),
+	})
+
+	b, err := cfnTemplate.YAML()
+	if err != nil {
+		return nil, err
+	}
+
+	r.log.Info("creating cloudformation stack")
+	if _, err := r.cfnSvc.CreateStack(&cloudformation.CreateStackInput{
+		TemplateBody: aws.String(string(b)),
+		StackName:    aws.String(stackName),
+		Capabilities: aws.StringSlice([]string{"CAPABILITY_IAM"}),
+		Tags: []*cloudformation.Tag{
+			{
+				Key:   aws.String("managedBy"),
+				Value: aws.String("amazon-apigateway-ingress-controller"),
+			},
+		},
+	}); err != nil {
+		return nil, err
+	}
+
+	r.log.Info("cloudformation route53 stack creating, setting finalizers", zap.String("StackName", stackName))
+	instance.SetFinalizers(finalizers.AddFinalizer(instance, FinalizerRoute53CFNStack))
+
+	return instance, nil
+}
+
+func (r *ReconcileIngress) updateRoute53(instance *extensionsv1beta1.Ingress, mainStack *cloudformation.Stack) error {
+	stackName := fmt.Sprintf("%s%s", instance.ObjectMeta.Name, Route53StackNamePostfix)
+
+	hostedZoneName := getHostedZoneName(instance)
+	if hostedZoneName == "" {
+		return nil
+	}
+
+	cfnTemplate := cfn.BuildAPIGatewayRoute53Template(&cfn.Route53TemplateConfig{
+		CustomDomainName:         getCustomDomainName(instance),
+		HostedZoneName:           getHostedZoneName(instance),
+		CustomDomainHostName:     getCustomDomainCreatedHostname(mainStack),
+		CustomDomainHostedZoneID: getCustomDomainCreatedHostedZoneID(mainStack),
+	})
+	b, err := cfnTemplate.YAML()
+	if err != nil {
+		return err
+	}
+
+	if _, err := r.cfnSvc.UpdateStack(&cloudformation.UpdateStackInput{
+		TemplateBody: aws.String(string(b)),
+		StackName:    aws.String(stackName),
+		Capabilities: aws.StringSlice([]string{"CAPABILITY_IAM"}),
+		Tags: []*cloudformation.Tag{
+			{
+				Key:   aws.String("managedBy"),
+				Value: aws.String("aws-apigateway-ingress-controller"),
+			},
+		},
+	}); err != nil {
+		r.log.Error("Error wehen updating route53 cloudformation stack", zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
+func (r *ReconcileIngress) deleteRoute53(instance *extensionsv1beta1.Ingress) (*extensionsv1beta1.Ingress, *reconcile.Result, error) {
+	stackName := fmt.Sprintf("%s%s", instance.ObjectMeta.Name, Route53StackNamePostfix)
+	stack, err := cfn.DescribeStack(r.cfnSvc, stackName)
+	if err != nil && cfn.IsDoesNotExist(err, stackName) {
+		r.log.Info("stack doesn't exist, removing finalizer", zap.String("stackName", stackName))
+		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, FinalizerRoute53CFNStack))
+		return instance, nil, nil
+	}
+
+	if err != nil {
+		r.log.Error("error describing apigateway cloudformation stack", zap.String("stackName", stackName), zap.Error(err))
+		return nil, nil, err
+	}
+
+	if cfn.IsDeleting(*stack.StackStatus) {
+		r.log.Info("retrying delete in 5 seconds", zap.String("status", *stack.StackStatus))
+		return instance, &reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	if cfn.DeleteComplete(*stack.StackStatus) {
+		r.log.Info("delete complete, removing finalizer", zap.String("stackName", stackName))
+		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, FinalizerRoute53CFNStack))
+		return instance, nil, nil
+	}
+
+	// We want to retry delete even if DELETE_FAILED since removing Loadbalancer/VPCLink can be a bit finnicky
+	r.log.Info(
+		"deleting apigateway route53 cloudformation stack",
+		zap.String("stackName", stackName),
+		zap.String("status", *stack.StackStatus),
+	)
+
+	if _, err := r.cfnSvc.DeleteStack(&cloudformation.DeleteStackInput{
+		StackName: aws.String(stackName),
+	}); err != nil {
+		r.log.Error("error deleting apigateway route53 cloudformation stack", zap.Error(err))
+		return nil, nil, err
+	}
+
+	return instance, &reconcile.Result{Requeue: true}, nil
+}
+
+func (r *ReconcileIngress) reconcileRoute53(request reconcile.Request, mainStack *cloudformation.Stack, instance *extensionsv1beta1.Ingress) (reconcile.Result, error) {
+	stackName := fmt.Sprintf("%s%s", instance.ObjectMeta.Name, Route53StackNamePostfix)
+
+	hostedZoneName := getHostedZoneName(instance)
+	r.log.Info("Reconile apigateway route53", zap.String("hostedZoneName", hostedZoneName))
+	if hostedZoneName == "" {
+		if finalizers.HasFinalizer(instance, FinalizerRoute53CFNStack) {
+			r.log.Info("Ingress has finalizer, deleting.")
+			// r.log.Info("deleting apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name))
+			instance, requeue, err := r.deleteRoute53(instance)
+			if requeue != nil {
+				return *requeue, nil
+			}
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			return reconcile.Result{}, r.Update(context.TODO(), instance)
+		}
+		return reconcile.Result{}, nil
+	}
+
+	// Delete if timestamp is set
+	if instance.ObjectMeta.DeletionTimestamp.IsZero() == false {
+		if finalizers.HasFinalizer(instance, FinalizerRoute53CFNStack) {
+			instance, requeue, err := r.deleteRoute53(instance)
+			if requeue != nil {
+				return *requeue, nil
+			}
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			return reconcile.Result{}, r.Update(context.TODO(), instance)
+		}
+		return reconcile.Result{}, nil
+	}
+
+	// Check if stack exists
+	stack, err := cfn.DescribeStack(r.cfnSvc, stackName)
+	if err != nil && cfn.IsDoesNotExist(err, stackName) {
+		r.log.Info("creating apigateway route53", zap.String("stackName", stackName))
+		instance, err := r.createRoute53(instance, mainStack)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		if err := r.Update(context.TODO(), instance); err != nil {
+			return reconcile.Result{}, err
+		}
+
+		return reconcile.Result{Requeue: true}, nil
+	} else if err != nil {
+		r.log.Error("error describing route53 stack", zap.Error(err))
+		return reconcile.Result{}, err
+	}
+
+	r.log.Info("Found Stack", zap.String("stackName", stackName), zap.String("StackStatus", *stack.StackStatus))
+
+	if cfn.IsFailed(*stack.StackStatus) {
+		return reconcile.Result{}, r.Update(context.TODO(), instance)
+	}
+
+	if cfn.IsComplete(*stack.StackStatus) == false {
+		r.log.Info("Not complete, requeuing route53 stack", zap.String("status", *stack.StackStatus)) // increasing timout value to 30 as create/update cf stack takes time and quick update gives errors sometimes
+		return reconcile.Result{RequeueAfter: 10 * time.Second}, r.Update(context.TODO(), instance)
+	}
+
+	if cfn.IsComplete(*stack.StackStatus) && shouldUpdateRoute53(mainStack, stack, instance) {
+		r.log.Info("Updating apigateway route53 cloudformation stack", zap.String("stackName", stackName))
+		if err := r.updateRoute53(instance, mainStack); err != nil {
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{Requeue: true}, nil
+	}
+	r.log.Info("Route53 Stack Create/Update Complete")
+
+	return reconcile.Result{}, r.Status().Update(context.TODO(), instance)
+
 }
