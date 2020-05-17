@@ -72,6 +72,10 @@ func getNodeSelector(ingress *extensionsv1beta1.Ingress) labels.Selector {
 	return s
 }
 
+func getRoute53AccountRole(ingress *extensionsv1beta1.Ingress) string {
+	return ingress.ObjectMeta.Annotations[IngressAnnotationAssumeRoute53RoleArn]
+}
+
 func getStageName(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationStageName]
 }

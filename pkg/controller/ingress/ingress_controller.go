@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/apigateway"
@@ -57,24 +58,25 @@ import (
 )
 
 const (
-	ingressNameLengthLimit            = 51
-	FinalizerCFNStack                 = "apigateway.networking.amazonaws.com/ingress-finalizer"
-	FinalizerRoute53CFNStack          = "apigateway.networking.amazonaws.com/route53-ingress-finalizer"
-	IngressClassAnnotation            = "kubernetes.io/ingress.class"
-	IngressAnnotationNodeSelector     = "apigateway.ingress.kubernetes.io/node-selector"
-	IngressAnnotationClientArns       = "apigateway.ingress.kubernetes.io/client-arns"
-	IngressAnnotationCustomDomainName = "apigateway.ingress.kubernetes.io/custom-domain-name"
-	IngressAnnotationCertificateArn   = "apigateway.ingress.kubernetes.io/certificate-arn"
-	IngressAnnotationStageName        = "apigateway.ingress.kubernetes.io/stage-name"
-	IngressAnnotationNginxReplicas    = "apigateway.ingress.kubernetes.io/nginx-replicas"
-	IngressAnnotationNginxImage       = "apigateway.ingress.kubernetes.io/nginx-image"
-	IngressAnnotationNginxServicePort = "apigateway.ingress.kubernetes.io/nginx-service-port"
-	IngressAnnotationEndpointType     = "apigateway.ingress.kubernetes.io/apigw-endpoint-type"
-	IngressAnnotationWAFEnabled       = "apigateway.ingress.kubernetes.io/waf-enabled"
-	IngressAnnotationWAFRulesCFJson   = "apigateway.ingress.kubernetes.io/waf-rule-cf-json"
-	IngressAnnotationWAFScope         = "apigateway.ingress.kubernetes.io/waf-scope"
-	IngressAnnotationHostedZoneName   = "apigateway.ingress.kubernetes.io/hosted-zone-name"
-	Route53StackNamePostfix           = "-route53"
+	ingressNameLengthLimit                = 51
+	FinalizerCFNStack                     = "apigateway.networking.amazonaws.com/ingress-finalizer"
+	FinalizerRoute53CFNStack              = "apigateway.networking.amazonaws.com/route53-ingress-finalizer"
+	IngressClassAnnotation                = "kubernetes.io/ingress.class"
+	IngressAnnotationNodeSelector         = "apigateway.ingress.kubernetes.io/node-selector"
+	IngressAnnotationClientArns           = "apigateway.ingress.kubernetes.io/client-arns"
+	IngressAnnotationCustomDomainName     = "apigateway.ingress.kubernetes.io/custom-domain-name"
+	IngressAnnotationCertificateArn       = "apigateway.ingress.kubernetes.io/certificate-arn"
+	IngressAnnotationStageName            = "apigateway.ingress.kubernetes.io/stage-name"
+	IngressAnnotationNginxReplicas        = "apigateway.ingress.kubernetes.io/nginx-replicas"
+	IngressAnnotationNginxImage           = "apigateway.ingress.kubernetes.io/nginx-image"
+	IngressAnnotationNginxServicePort     = "apigateway.ingress.kubernetes.io/nginx-service-port"
+	IngressAnnotationEndpointType         = "apigateway.ingress.kubernetes.io/apigw-endpoint-type"
+	IngressAnnotationWAFEnabled           = "apigateway.ingress.kubernetes.io/waf-enabled"
+	IngressAnnotationWAFRulesCFJson       = "apigateway.ingress.kubernetes.io/waf-rule-cf-json"
+	IngressAnnotationWAFScope             = "apigateway.ingress.kubernetes.io/waf-scope"
+	IngressAnnotationHostedZoneName       = "apigateway.ingress.kubernetes.io/hosted-zone-name"
+	IngressAnnotationAssumeRoute53RoleArn = "apigateway.ingress.kubernetes.io/route53-assume-role-arn"
+	Route53StackNamePostfix               = "-route53"
 )
 
 var (
@@ -750,19 +752,40 @@ func (r *ReconcileIngress) createRoute53(instance *extensionsv1beta1.Ingress, ma
 		return nil, err
 	}
 
-	r.log.Info("creating cloudformation stack")
-	if _, err := r.cfnSvc.CreateStack(&cloudformation.CreateStackInput{
-		TemplateBody: aws.String(string(b)),
-		StackName:    aws.String(stackName),
-		Capabilities: aws.StringSlice([]string{"CAPABILITY_IAM"}),
-		Tags: []*cloudformation.Tag{
-			{
-				Key:   aws.String("managedBy"),
-				Value: aws.String("amazon-apigateway-ingress-controller"),
+	route53AccountRole := getRoute53AccountRole(instance)
+
+	if route53AccountRole != "" {
+		sess, config := createAWSSharedAccountSession(r.log, route53AccountRole)
+		cfnClient := cloudformation.New(sess, config)
+		r.log.Info("creating cloudformation stack")
+		if _, err := cfnClient.CreateStack(&cloudformation.CreateStackInput{
+			TemplateBody: aws.String(string(b)),
+			StackName:    aws.String(stackName),
+			Capabilities: aws.StringSlice([]string{"CAPABILITY_IAM"}),
+			Tags: []*cloudformation.Tag{
+				{
+					Key:   aws.String("managedBy"),
+					Value: aws.String("amazon-apigateway-ingress-controller"),
+				},
 			},
-		},
-	}); err != nil {
-		return nil, err
+		}); err != nil {
+			return nil, err
+		}
+	} else {
+		r.log.Info("creating cloudformation stack")
+		if _, err := r.cfnSvc.CreateStack(&cloudformation.CreateStackInput{
+			TemplateBody: aws.String(string(b)),
+			StackName:    aws.String(stackName),
+			Capabilities: aws.StringSlice([]string{"CAPABILITY_IAM"}),
+			Tags: []*cloudformation.Tag{
+				{
+					Key:   aws.String("managedBy"),
+					Value: aws.String("amazon-apigateway-ingress-controller"),
+				},
+			},
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	r.log.Info("cloudformation route53 stack creating, setting finalizers", zap.String("StackName", stackName))
@@ -790,19 +813,40 @@ func (r *ReconcileIngress) updateRoute53(instance *extensionsv1beta1.Ingress, ma
 		return err
 	}
 
-	if _, err := r.cfnSvc.UpdateStack(&cloudformation.UpdateStackInput{
-		TemplateBody: aws.String(string(b)),
-		StackName:    aws.String(stackName),
-		Capabilities: aws.StringSlice([]string{"CAPABILITY_IAM"}),
-		Tags: []*cloudformation.Tag{
-			{
-				Key:   aws.String("managedBy"),
-				Value: aws.String("aws-apigateway-ingress-controller"),
+	route53AccountRole := getRoute53AccountRole(instance)
+
+	if route53AccountRole != "" {
+		sess, config := createAWSSharedAccountSession(r.log, route53AccountRole)
+		cfnClient := cloudformation.New(sess, config)
+		if _, err := cfnClient.UpdateStack(&cloudformation.UpdateStackInput{
+			TemplateBody: aws.String(string(b)),
+			StackName:    aws.String(stackName),
+			Capabilities: aws.StringSlice([]string{"CAPABILITY_IAM"}),
+			Tags: []*cloudformation.Tag{
+				{
+					Key:   aws.String("managedBy"),
+					Value: aws.String("aws-apigateway-ingress-controller"),
+				},
 			},
-		},
-	}); err != nil {
-		r.log.Error("Error wehen updating route53 cloudformation stack", zap.Error(err))
-		return err
+		}); err != nil {
+			r.log.Error("Error wehen updating route53 cloudformation stack", zap.Error(err))
+			return err
+		}
+	} else {
+		if _, err := r.cfnSvc.UpdateStack(&cloudformation.UpdateStackInput{
+			TemplateBody: aws.String(string(b)),
+			StackName:    aws.String(stackName),
+			Capabilities: aws.StringSlice([]string{"CAPABILITY_IAM"}),
+			Tags: []*cloudformation.Tag{
+				{
+					Key:   aws.String("managedBy"),
+					Value: aws.String("aws-apigateway-ingress-controller"),
+				},
+			},
+		}); err != nil {
+			r.log.Error("Error wehen updating route53 cloudformation stack", zap.Error(err))
+			return err
+		}
 	}
 
 	return nil
@@ -840,11 +884,24 @@ func (r *ReconcileIngress) deleteRoute53(instance *extensionsv1beta1.Ingress) (*
 		zap.String("status", *stack.StackStatus),
 	)
 
-	if _, err := r.cfnSvc.DeleteStack(&cloudformation.DeleteStackInput{
-		StackName: aws.String(stackName),
-	}); err != nil {
-		r.log.Error("error deleting apigateway route53 cloudformation stack", zap.Error(err))
-		return nil, nil, err
+	route53AccountRole := getRoute53AccountRole(instance)
+
+	if route53AccountRole != "" {
+		sess, config := createAWSSharedAccountSession(r.log, route53AccountRole)
+		cfnClient := cloudformation.New(sess, config)
+		if _, err := cfnClient.DeleteStack(&cloudformation.DeleteStackInput{
+			StackName: aws.String(stackName),
+		}); err != nil {
+			r.log.Error("error deleting apigateway route53 cloudformation stack", zap.Error(err))
+			return nil, nil, err
+		}
+	} else {
+		if _, err := r.cfnSvc.DeleteStack(&cloudformation.DeleteStackInput{
+			StackName: aws.String(stackName),
+		}); err != nil {
+			r.log.Error("error deleting apigateway route53 cloudformation stack", zap.Error(err))
+			return nil, nil, err
+		}
 	}
 
 	return instance, &reconcile.Result{Requeue: true}, nil
@@ -927,4 +984,33 @@ func (r *ReconcileIngress) reconcileRoute53(request reconcile.Request, mainStack
 
 	return reconcile.Result{}, r.Status().Update(context.TODO(), instance)
 
+}
+
+func createAWSSharedAccountSession(logger *zap.Logger, roleArn string) (*session.Session, *aws.Config) {
+	logger.Info("creating session for ec2metadata service")
+	sess, err := session.NewSession(&aws.Config{Region: aws.String("us-west-2")})
+	if err != nil {
+		logger.Fatal("unable create session for ec2 metadata service call", zap.Error(err))
+	}
+
+	ec2metadataSvc := ec2metadata.New(sess)
+	logger.Info("fetching ec2 identity document")
+	ec2IdentityDocument, err := ec2metadataSvc.GetInstanceIdentityDocument()
+	if err != nil {
+		logger.Fatal("unable to determine region from ec2", zap.Error(err))
+	}
+
+	logger.Info("creating AWS api session", zap.String("region", ec2IdentityDocument.Region))
+	sess = session.Must(session.NewSession())
+	creds := stscreds.NewCredentials(sess, roleArn)
+	config := &aws.Config{
+		Region:      aws.String(ec2IdentityDocument.Region),
+		Credentials: creds,
+	}
+
+	if err != nil {
+		logger.Fatal("unable to create session for AWS services", zap.Error(err))
+	}
+
+	return sess, config
 }

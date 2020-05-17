@@ -19,7 +19,6 @@ import (
 	"flag"
 	"os"
 
-        _ "sigs.k8s.io/controller-tools/cmd/controller-gen"
 	"github.com/awslabs/amazon-apigateway-ingress-controller/pkg/controller"
 	"github.com/awslabs/amazon-apigateway-ingress-controller/pkg/webhook"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
