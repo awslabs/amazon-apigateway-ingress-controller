@@ -137,18 +137,28 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != fmt.Sprintf("%t", getWAFEnabled(instance)) {
 			return true
 		}
+		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFScope] != getWAFScope(instance) {
+			return true
+		}
+		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFRules] != getWAFRulesJSON(instance) {
+			return true
+		}
 	}
 
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyAPIEndpointType] != getAPIEndpointType(instance) {
 		return true
 	}
 
-	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFScope] != getWAFScope(instance) {
-		return true
-	}
-
-	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFRules] != getWAFRulesJSON(instance) {
-		return true
+	if !(cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] == "" && !getWAFEnabled(instance)) {
+		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != fmt.Sprintf("%t", getWAFEnabled(instance)) {
+			return true
+		}
+		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFScope] != getWAFScope(instance) {
+			return true
+		}
+		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFRules] != getWAFRulesJSON(instance) {
+			return true
+		}
 	}
 
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyCertARN] != getCertificateArn(instance) {

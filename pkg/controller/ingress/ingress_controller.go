@@ -474,7 +474,7 @@ func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (*extensi
 	if cfn.DeleteComplete(*stack.StackStatus) {
 		r.log.Info("delete complete, removing finalizer", zap.String("stackName", instance.ObjectMeta.Name))
 		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, FinalizerCFNStack))
-		return instance, nil, nil
+		return r.deleteRoute53(instance)
 	}
 
 	// We want to retry delete even if DELETE_FAILED since removing Loadbalancer/VPCLink can be a bit finnicky
