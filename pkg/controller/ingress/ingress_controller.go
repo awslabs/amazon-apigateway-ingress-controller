@@ -854,7 +854,16 @@ func (r *ReconcileIngress) updateRoute53(instance *extensionsv1beta1.Ingress, ma
 
 func (r *ReconcileIngress) deleteRoute53(instance *extensionsv1beta1.Ingress) (*extensionsv1beta1.Ingress, *reconcile.Result, error) {
 	stackName := fmt.Sprintf("%s%s", instance.ObjectMeta.Name, Route53StackNamePostfix)
-	stack, err := cfn.DescribeStack(r.cfnSvc, stackName)
+	route53AccountRole := getRoute53AccountRole(instance)
+	var stack *cloudformation.Stack
+	var err error
+	if route53AccountRole != "" {
+		sess, config := createAWSSharedAccountSession(r.log, route53AccountRole)
+		cfnClient := cloudformation.New(sess, config)
+		stack, err = cfn.DescribeStack(cfnClient, stackName)
+	} else {
+		stack, err = cfn.DescribeStack(r.cfnSvc, stackName)
+	}
 	if err != nil && cfn.IsDoesNotExist(err, stackName) {
 		r.log.Info("stack doesn't exist, removing finalizer", zap.String("stackName", stackName))
 		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, FinalizerRoute53CFNStack))
@@ -883,8 +892,6 @@ func (r *ReconcileIngress) deleteRoute53(instance *extensionsv1beta1.Ingress) (*
 		zap.String("stackName", stackName),
 		zap.String("status", *stack.StackStatus),
 	)
-
-	route53AccountRole := getRoute53AccountRole(instance)
 
 	if route53AccountRole != "" {
 		sess, config := createAWSSharedAccountSession(r.log, route53AccountRole)
@@ -929,10 +936,17 @@ func (r *ReconcileIngress) reconcileRoute53(request reconcile.Request, mainStack
 	}
 
 	// Check if stack exists
+
 	route53AccountRole := getRoute53AccountRole(instance)
-	sess, config := createAWSSharedAccountSession(r.log, route53AccountRole)
-	cfnClient := cloudformation.New(sess, config)
-	stack, err := cfn.DescribeStack(cfnClient, stackName)
+	var stack *cloudformation.Stack
+	var err error
+	if route53AccountRole != "" {
+		sess, config := createAWSSharedAccountSession(r.log, route53AccountRole)
+		cfnClient := cloudformation.New(sess, config)
+		stack, err = cfn.DescribeStack(cfnClient, stackName)
+	} else {
+		stack, err = cfn.DescribeStack(r.cfnSvc, stackName)
+	}
 	if err != nil && cfn.IsDoesNotExist(err, stackName) {
 		r.log.Info("creating apigateway route53", zap.String("stackName", stackName))
 		instance, err := r.createRoute53(instance, mainStack)
