@@ -133,8 +133,10 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		return true
 	}
 
-	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != fmt.Sprintf("%t", getWAFEnabled(instance)) {
-		return true
+	if !(cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] == "" && !getWAFEnabled(instance)) {
+		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != fmt.Sprintf("%t", getWAFEnabled(instance)) {
+			return true
+		}
 	}
 
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyAPIEndpointType] != getAPIEndpointType(instance) {

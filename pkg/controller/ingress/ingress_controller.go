@@ -255,7 +255,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Delete if timestamp is set
 	if instance.ObjectMeta.DeletionTimestamp.IsZero() == false {
-		if finalizers.HasFinalizer(instance, FinalizerCFNStack) {
+		if finalizers.HasFinalizer(instance, FinalizerCFNStack) || finalizers.HasFinalizer(instance, FinalizerRoute53CFNStack) {
 			// r.log.Info("deleting apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name))
 			instance, requeue, err := r.delete(instance)
 			if requeue != nil {
@@ -299,7 +299,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	if cfn.IsComplete(*stack.StackStatus) == false {
 		r.log.Info("Not complete, requeuing", zap.String("status", *stack.StackStatus))
-		// increasing timout value to 30 as create/update cf stack takes time and quick update gives errors sometimes
+		// increasing timout value to 20 as create/update cf stack takes time and quick update gives errors sometimes
 		return reconcile.Result{RequeueAfter: 20 * time.Second}, r.Update(context.TODO(), instance)
 	}
 
@@ -497,7 +497,7 @@ func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (*extensi
 		return nil, nil, err
 	}
 
-	return instance, &reconcile.Result{Requeue: true}, nil
+	return r.deleteRoute53(instance)
 }
 
 func (r *ReconcileIngress) buildReverseProxyResources(instance *extensionsv1beta1.Ingress) []metav1.Object {
@@ -928,23 +928,11 @@ func (r *ReconcileIngress) reconcileRoute53(request reconcile.Request, mainStack
 		return reconcile.Result{}, nil
 	}
 
-	// Delete if timestamp is set
-	if instance.ObjectMeta.DeletionTimestamp.IsZero() == false {
-		if finalizers.HasFinalizer(instance, FinalizerRoute53CFNStack) {
-			instance, requeue, err := r.deleteRoute53(instance)
-			if requeue != nil {
-				return *requeue, nil
-			}
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-			return reconcile.Result{}, r.Update(context.TODO(), instance)
-		}
-		return reconcile.Result{}, nil
-	}
-
 	// Check if stack exists
-	stack, err := cfn.DescribeStack(r.cfnSvc, stackName)
+	route53AccountRole := getRoute53AccountRole(instance)
+	sess, config := createAWSSharedAccountSession(r.log, route53AccountRole)
+	cfnClient := cloudformation.New(sess, config)
+	stack, err := cfn.DescribeStack(cfnClient, stackName)
 	if err != nil && cfn.IsDoesNotExist(err, stackName) {
 		r.log.Info("creating apigateway route53", zap.String("stackName", stackName))
 		instance, err := r.createRoute53(instance, mainStack)
@@ -969,8 +957,8 @@ func (r *ReconcileIngress) reconcileRoute53(request reconcile.Request, mainStack
 	}
 
 	if cfn.IsComplete(*stack.StackStatus) == false {
-		r.log.Info("Not complete, requeuing route53 stack", zap.String("status", *stack.StackStatus)) // increasing timout value to 30 as create/update cf stack takes time and quick update gives errors sometimes
-		return reconcile.Result{RequeueAfter: 10 * time.Second}, r.Update(context.TODO(), instance)
+		r.log.Info("Not complete, requeuing route53 stack", zap.String("status", *stack.StackStatus))
+		return reconcile.Result{RequeueAfter: 20 * time.Second}, r.Update(context.TODO(), instance)
 	}
 
 	if cfn.IsComplete(*stack.StackStatus) && shouldUpdateRoute53(mainStack, stack, instance) {
