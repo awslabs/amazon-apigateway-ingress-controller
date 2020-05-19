@@ -56,7 +56,7 @@ const (
 
 func toLogicalName(idx int, parts []string) string {
 	s := strings.Join(parts[:idx+1], "")
-	remove := []string{"{", "}", "+"}
+	remove := []string{"{", "}", "+", "-", "*"}
 	for _, char := range remove {
 		s = strings.Replace(s, char, "", -1)
 	}
