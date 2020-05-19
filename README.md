@@ -30,24 +30,30 @@ make deploy
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  name: foobar-ingress
   annotations:
-    kubernetes.io/ingress.class: apigateway
+    apigateway.ingress.kubernetes.io/client-arns: arn:aws:iam::xxx:user/xxx
     apigateway.ingress.kubernetes.io/stage-name: prod
-    apigateway.ingress.kubernetes.io/client-arns: arn::foo,arn::bar
-    apigateway.ingress.kubernetes.io/nginx-replicas: "3"
-    apigateway.ingress.kubernetes.io/nginx-image: nginx:latest
-    apigateway.ingress.kubernetes.io/nginx-service-port: "9090"
+    apigateway.ingress.kubernetes.io/apigw-endpoint-type: REGIONAL
+    kubernetes.io/ingress.class: apigateway
+    apigateway.ingress.kubernetes.io/custom-domain-name: apigw-test.example.com
+    apigateway.ingress.kubernetes.io/certificate-arn: arn:aws:acm:xxx:xxx:certificate/xxx
+    apigateway.ingress.kubernetes.io/hosted-zone-name: example.com.
+    apigateway.ingress.kubernetes.io/route53-assume-role-arn: arn:aws:iam::xxx:role/xxx
+    apigateway.ingress.kubernetes.io/waf-enabled: "true"
+    apigateway.ingress.kubernetes.io/waf-scope: REGIONAL
+    apigateway.ingress.kubernetes.io/waf-rule-cf-json: '[{"Name":"RuleWithAWSManagedRules","Priority":0,"OverrideAction":{"Count":{}},"VisibilityConfig":{"SampledRequestsEnabled":true,"CloudWatchMetricsEnabled":true,"MetricName":"RuleWithAWSManagedRulesMetric"},"Statement":{"ManagedRuleGroupStatement":{"VendorName":"AWS","Name":"AWSManagedRulesCommonRuleSet","ExcludedRules":[]}}},{"Name":"RuleWithAWSManagedLinuxnRules","Priority":4,"OverrideAction":{"Count":{}},"VisibilityConfig":{"SampledRequestsEnabled":true,"CloudWatchMetricsEnabled":true,"MetricName":"RuleWithAWSManagedLinuxRulesMetric"},"Statement":{"ManagedRuleGroupStatement":{"VendorName":"AWS","Name":"AWSManagedRulesLinuxRuleSet","ExcludedRules":[]}}},{"Name":"RuleWithAWSManagedIPReputationRules","Priority":5,"OverrideAction":{"Count":{}},"VisibilityConfig":{"SampledRequestsEnabled":true,"CloudWatchMetricsEnabled":true,"MetricName":"RuleWithAWSManagedIPReputationRulesMetric"},"Statement":{"ManagedRuleGroupStatement":{"VendorName":"AWS","Name":"AWSManagedRulesAmazonIpReputationList","ExcludedRules":[]}}},{"Name":"RuleWithAWSManagedAdminProtectionRules","Priority":6,"OverrideAction":{"Count":{}},"VisibilityConfig":{"SampledRequestsEnabled":true,"CloudWatchMetricsEnabled":true,"MetricName":"RuleWithAWSManagedAdminProtectionRulesMetric"},"Statement":{"ManagedRuleGroupStatement":{"VendorName":"AWS","Name":"AWSManagedRulesAdminProtectionRuleSet","ExcludedRules":[]}}},{"Name":"RuleWithAWSManagedKnownBadInputsRules","Priority":2,"OverrideAction":{"Count":{}},"VisibilityConfig":{"SampledRequestsEnabled":true,"CloudWatchMetricsEnabled":true,"MetricName":"RuleWithAWSManagedKnownBadInputsRulesMetric"},"Statement":{"ManagedRuleGroupStatement":{"VendorName":"AWS","Name":"AWSManagedRulesKnownBadInputsRuleSet","ExcludedRules":[]}}},{"Name":"RuleWithAWSManagedSQLInjectInputsRules","Priority":3,"OverrideAction":{"Count":{}},"VisibilityConfig":{"SampledRequestsEnabled":true,"CloudWatchMetricsEnabled":true,"MetricName":"RuleWithAWSManagedSQLInjectInputsRulesMetric"},"Statement":{"ManagedRuleGroupStatement":{"VendorName":"AWS","Name":"AWSManagedRulesSQLiRuleSet","ExcludedRules":[]}}},{"Name":"BlockXssAttack","Priority":1,"Action":{"Block":{}},"VisibilityConfig":{"SampledRequestsEnabled":true,"CloudWatchMetricsEnabled":true,"MetricName":"BlockXssAttackMetric"},"Statement":{"XssMatchStatement":{"FieldToMatch":{"AllQueryArguments":{}},"TextTransformations":[{"Priority":1,"Type":"NONE"}]}}}]'
+  name: api-95d8427d
+  namespace: default
 spec:
   rules:
-    - http:
-        paths:
-        - backend:
-            serviceName: foo-service
-            servicePort: 8080
-          path: /api/v1/foo
-        - backend:
-            serviceName: bar-service
-            servicePort: 8080
-          path: /api/v1/bar
+  - http:
+      paths:
+      - backend:
+          serviceName: bookservice
+          servicePort: 80
+        path: /api/book
+      - backend:
+          serviceName: authorservice
+          servicePort: 80
+        path: /api/author
 ```
