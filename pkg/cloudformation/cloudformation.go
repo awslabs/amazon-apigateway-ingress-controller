@@ -20,38 +20,39 @@ import (
 
 //const is constance values for resource naming used to build cf templates
 const (
-	AWSStackName                         = "AWS::StackName"
-	AWSRegion                            = "AWS::Region"
-	APIMethodResourceID                  = "Method"
-	APIRootResourceResourceID            = "RootResourceId"
-	APIResourceResourceName              = "Resource"
-	APIResourceName                      = "RestAPI"
-	CustomDomainResourceName             = "CustomDomain"
-	DeploymentResourceName               = "Deployment"
-	DistributionDomainNameResourceName   = "DistributionDomainName"
-	DistributionHostedZoneIdResourceName = "DistributionHostedZoneId"
-	LoadBalancerResourceName             = "LoadBalancer"
-	ListnerResourceName                  = "Listener"
-	RegionalDomainNameResourceName       = "RegionalDomainName"
-	RegionalHostedZoneIdResourceName     = "RegionalHostedZoneId"
-	SecurityGroupIngressResourceName     = "SecurityGroupIngress"
-	TargetGroupResourceName              = "TargetGroup"
-	VPCLinkResourceName                  = "VPCLink"
-	WAFACLResourceName                   = "WAFAcl"
-	WAFAssociationResourceName           = "WAFAssociation"
-	Route53RecordResourceName            = "Route53RecordSet"
-	OutputKeyRestAPIID                   = "RestAPIID"
-	OutputKeyAPIGatewayEndpoint          = "APIGatewayEndpoint"
-	OutputKeyAPIEndpointType             = "APIGWEndpointType"
-	OutputKeyClientARNS                  = "ClientARNS"
-	OutputKeyCertARN                     = "SSLCertArn"
-	OutputKeyCustomDomain                = "CustomDomainName"
-	OutputKeyWAFEnabled                  = "WAFEnabled"
-	OutputKeyWAFRules                    = "WAFRules"
-	OutputKeyWAFScope                    = "WAFScope"
-	OutputKeyCustomDomainHostName        = "CustomDomainHostname"
-	OutputKeyCustomDomainHostedZoneID    = "CustomDomainHostedZoneID"
-	OutputKeyHostedZone                  = "HostedZone"
+	AWSStackName                            = "AWS::StackName"
+	AWSRegion                               = "AWS::Region"
+	APIMethodResourceID                     = "Method"
+	APIRootResourceResourceID               = "RootResourceId"
+	APIResourceResourceName                 = "Resource"
+	APIResourceName                         = "RestAPI"
+	CustomDomainResourceName                = "CustomDomain"
+	CustomDomainBasePathMappingResourceName = "CustomDomainBasePathMapping"
+	DeploymentResourceName                  = "Deployment"
+	DistributionDomainNameResourceName      = "DistributionDomainName"
+	DistributionHostedZoneIdResourceName    = "DistributionHostedZoneId"
+	LoadBalancerResourceName                = "LoadBalancer"
+	ListnerResourceName                     = "Listener"
+	RegionalDomainNameResourceName          = "RegionalDomainName"
+	RegionalHostedZoneIdResourceName        = "RegionalHostedZoneId"
+	SecurityGroupIngressResourceName        = "SecurityGroupIngress"
+	TargetGroupResourceName                 = "TargetGroup"
+	VPCLinkResourceName                     = "VPCLink"
+	WAFACLResourceName                      = "WAFAcl"
+	WAFAssociationResourceName              = "WAFAssociation"
+	Route53RecordResourceName               = "Route53RecordSet"
+	OutputKeyRestAPIID                      = "RestAPIID"
+	OutputKeyAPIGatewayEndpoint             = "APIGatewayEndpoint"
+	OutputKeyAPIEndpointType                = "APIGWEndpointType"
+	OutputKeyClientARNS                     = "ClientARNS"
+	OutputKeyCertARN                        = "SSLCertArn"
+	OutputKeyCustomDomain                   = "CustomDomainName"
+	OutputKeyWAFEnabled                     = "WAFEnabled"
+	OutputKeyWAFRules                       = "WAFRules"
+	OutputKeyWAFScope                       = "WAFScope"
+	OutputKeyCustomDomainHostName           = "CustomDomainHostname"
+	OutputKeyCustomDomainHostedZoneID       = "CustomDomainHostedZoneID"
+	OutputKeyHostedZone                     = "HostedZone"
 )
 
 func toLogicalName(idx int, parts []string) string {
@@ -292,6 +293,17 @@ func buildAWSEC2SecurityGroupIngresses(securityGroupIds []string, cidr string, n
 	return sgIngresses
 }
 
+func buildCustomDomainBasePathMapping(domainName string, stageName string) *apigateway.BasePathMapping {
+	r := &apigateway.BasePathMapping{
+		DomainName: domainName,
+		RestApiId:  cfn.Ref(APIResourceName),
+		Stage:      stageName,
+	}
+
+	r.AWSCloudFormationDependsOn = []string{DeploymentResourceName}
+	return r
+}
+
 func buildCustomDomain(domainName string, certificateArn string, apiEPType string) *apigateway.DomainName {
 	if apiEPType == "REGIONAL" {
 		return &apigateway.DomainName{
@@ -378,6 +390,8 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	if cfg.CustomDomainName != "" && cfg.CertificateArn != "" {
 		customDomain := buildCustomDomain(cfg.CustomDomainName, cfg.CertificateArn, cfg.APIEndpointType)
 		template.Resources[CustomDomainResourceName] = customDomain
+		basePathMapping := buildCustomDomainBasePathMapping(cfg.CustomDomainName, cfg.StageName)
+		template.Resources[CustomDomainBasePathMappingResourceName] = basePathMapping
 	}
 
 	if cfg.WAFEnabled {
@@ -457,14 +471,14 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFRules:           Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:           Output{Value: cfg.WAFScope},
 		}
-	} else if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName == "" {
+	} else if cfg.APIEndpointType == "REGIONAL" && !cfg.WAFEnabled && cfg.CustomDomainName == "" {
 		template.Outputs = map[string]interface{}{
 			OutputKeyRestAPIID:          Output{Value: cfn.Ref(APIResourceName)},
 			OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
 			OutputKeyClientARNS:         Output{Value: strings.Join(cfg.Arns, ",")},
 			OutputKeyAPIEndpointType:    Output{Value: cfg.APIEndpointType},
 		}
-	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName == "" {
+	} else if cfg.APIEndpointType == "EDGE" && !cfg.WAFEnabled && cfg.CustomDomainName == "" {
 		template.Outputs = map[string]interface{}{
 			OutputKeyRestAPIID:          Output{Value: cfn.Ref(APIResourceName)},
 			OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
