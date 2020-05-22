@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
@@ -305,7 +306,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	if cfn.IsComplete(*stack.StackStatus) && shouldUpdate(stack, instance, r.apigatewaySvc) {
 		r.log.Info("updating apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name))
-		if err := r.update(instance); err != nil {
+		if err := r.update(instance, stack); err != nil {
 			return reconcile.Result{}, err
 		}
 
@@ -593,7 +594,7 @@ func (r *ReconcileIngress) buildReverseProxyResources(instance *extensionsv1beta
 	return []metav1.Object{configMap, deploy, service}
 }
 
-func (r *ReconcileIngress) updateReverseProxy(instance *extensionsv1beta1.Ingress) (*corev1.Service, error) {
+func (r *ReconcileIngress) updateReverseProxy(instance *extensionsv1beta1.Ingress, stack *cloudformation.Stack) (*corev1.Service, error) {
 	objects := r.buildReverseProxyResources(instance)
 	for _, object := range objects {
 		if err := controllerutil.SetControllerReference(instance, object, r.scheme); err != nil {
@@ -601,6 +602,16 @@ func (r *ReconcileIngress) updateReverseProxy(instance *extensionsv1beta1.Ingres
 		}
 
 		runtimeObject := object.(runtime.Object)
+
+		// Fix update issue on reverse proxy. Deleting current resource. Need to find reason for this
+		configMap := &corev1.ConfigMap{}
+		deployment := &appsv1.Deployment{}
+		if stack != nil && checkProxyPaths(stack, instance, r.apigatewaySvc) && (reflect.TypeOf(object) == reflect.TypeOf(configMap) || reflect.TypeOf(object) == reflect.TypeOf(deployment)) {
+			r.log.Info("deleting reverse proxy resource config map", zap.String("gvk", runtimeObject.GetObjectKind().GroupVersionKind().String()), zap.String("name", object.GetName()))
+			r.Delete(context.TODO(), runtimeObject)
+			time.Sleep(2000 * time.Millisecond)
+		}
+
 		err := r.Get(context.TODO(), k8stypes.NamespacedName{Name: object.GetName(), Namespace: object.GetNamespace()}, runtimeObject)
 		switch errors.IsNotFound(err) {
 		case true:
@@ -629,7 +640,7 @@ func (r *ReconcileIngress) updateReverseProxy(instance *extensionsv1beta1.Ingres
 
 func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensionsv1beta1.Ingress, error) {
 	r.log.Info("creating reverse proxy")
-	svc, err := r.updateReverseProxy(instance)
+	svc, err := r.updateReverseProxy(instance, nil)
 	if err != nil {
 		r.log.Error("error creating proxy resources", zap.Error(err))
 		return nil, err
@@ -654,6 +665,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		WAFEnabled:       getWAFEnabled(instance),
 		WAFRulesJSON:     getWAFRulesJSON(instance),
 		WAFScope:         getWAFScope(instance),
+		WAFAssociation:   getWAFEnabled(instance),
 	})
 
 	b, err := cfnTemplate.YAML()
@@ -682,7 +694,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 	return instance, nil
 }
 
-func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress) error {
+func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cloudformation.Stack) error {
 	network, err := r.fetchNetworkingInfo(instance)
 	if err != nil {
 		r.log.Error("unable to fetch networking info", zap.Error(err))
@@ -690,10 +702,15 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress) error {
 	}
 
 	r.log.Info("updating proxy")
-	svc, err := r.updateReverseProxy(instance)
+	svc, err := r.updateReverseProxy(instance, stack)
 	if err != nil {
 		r.log.Error("error creating proxy resources", zap.Error(err))
 		return err
+	}
+
+  //With WAF enbled update gets a failure. To get rid of that do two updates to remove association and create it again
+	if getWAFEnabled(instance) {
+		r.log.Info("status waf association : ", zap.String("shouldUpdateWAF(stack)", fmt.Sprintf("%t", shouldUpdateWAF(stack))))
 	}
 
 	cfnTemplate := cfn.BuildAPIGatewayTemplateFromIngressRule(&cfn.TemplateConfig{
@@ -708,6 +725,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress) error {
 		WAFEnabled:       getWAFEnabled(instance),
 		WAFRulesJSON:     getWAFRulesJSON(instance),
 		WAFScope:         getWAFScope(instance),
+		WAFAssociation:   shouldUpdateWAF(stack),
 	})
 	b, err := cfnTemplate.YAML()
 	if err != nil {

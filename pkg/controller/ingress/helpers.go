@@ -128,6 +128,13 @@ func shouldUpdateRoute53(mainStack *cloudformation.Stack, stack *cloudformation.
 	return false
 }
 
+func shouldUpdateWAF(stack *cloudformation.Stack) bool {
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != "" && cfn.StackOutputMap(stack)[cfn.OutputKeyWAFAssociationCreated] == "" {
+		return true
+	}
+	return false
+}
+
 func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress, apigw apigatewayiface.APIGatewayAPI) bool {
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS] != strings.Join(getArns(instance), ",") {
 		return true
@@ -143,6 +150,10 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFRules] != getWAFRulesJSON(instance) {
 			return true
 		}
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != "" && cfn.StackOutputMap(stack)[cfn.OutputKeyWAFAssociationCreated] == "" {
+		return true
 	}
 
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyAPIEndpointType] != getAPIEndpointType(instance) {
@@ -169,6 +180,14 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		return true
 	}
 
+	if checkProxyPaths(stack, instance, apigw) {
+		return true
+	}
+
+	return false
+}
+
+func checkProxyPaths(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress, apigw apigatewayiface.APIGatewayAPI) bool {
 	apiId := cfn.StackOutputMap(stack)[cfn.OutputKeyRestAPIID]
 	var getResourceInput apigateway.GetResourcesInput
 	var limit int64
@@ -225,7 +244,6 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 
 		}
 	}
-
 	return false
 }
 

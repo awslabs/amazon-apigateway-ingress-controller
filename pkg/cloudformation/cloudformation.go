@@ -50,6 +50,7 @@ const (
 	OutputKeyWAFEnabled                     = "WAFEnabled"
 	OutputKeyWAFRules                       = "WAFRules"
 	OutputKeyWAFScope                       = "WAFScope"
+	OutputKeyWAFAssociationCreated          = "WAFAssociation"
 	OutputKeyCustomDomainHostName           = "CustomDomainHostname"
 	OutputKeyCustomDomainHostedZoneID       = "CustomDomainHostedZoneID"
 	OutputKeyHostedZone                     = "HostedZone"
@@ -337,6 +338,7 @@ type TemplateConfig struct {
 	WAFEnabled       bool
 	WAFRulesJSON     string
 	WAFScope         string
+	WAFAssociation   bool
 }
 
 // BuildAPIGatewayTemplateFromIngressRule generates the cloudformation template according to the config provided
@@ -397,11 +399,13 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	if cfg.WAFEnabled {
 		webACL := buildAWSWAFWebACL(cfg.WAFScope, cfg.WAFRulesJSON)
 		template.Resources[WAFACLResourceName] = webACL
-		webACLAssociation := buildAWSWAFWebACLAssociation(cfg.StageName)
-		template.Resources[WAFAssociationResourceName] = webACLAssociation
+		if cfg.WAFAssociation {
+			webACLAssociation := buildAWSWAFWebACLAssociation(cfg.StageName)
+			template.Resources[WAFAssociationResourceName] = webACLAssociation
+		}
 	}
 
-	if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName != "" {
+	if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName != "" && !cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
 			OutputKeyRestAPIID:                Output{Value: cfn.Ref(APIResourceName)},
 			OutputKeyAPIGatewayEndpoint:       Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
@@ -415,7 +419,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFRules:                 Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:                 Output{Value: cfg.WAFScope},
 		}
-	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName != "" {
+	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName != "" && !cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
 			OutputKeyRestAPIID:                Output{Value: cfn.Ref(APIResourceName)},
 			OutputKeyAPIGatewayEndpoint:       Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
@@ -428,6 +432,36 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFEnabled:               Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
 			OutputKeyWAFRules:                 Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:                 Output{Value: cfg.WAFScope},
+		}
+	} else if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName != "" && cfg.WAFAssociation {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:                Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint:       Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:               Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:          Output{Value: cfg.APIEndpointType},
+			OutputKeyCertARN:                  Output{Value: cfg.CertificateArn},
+			OutputKeyCustomDomain:             Output{Value: cfg.CustomDomainName},
+			OutputKeyCustomDomainHostName:     Output{Value: cfn.GetAtt(CustomDomainResourceName, RegionalDomainNameResourceName)},
+			OutputKeyCustomDomainHostedZoneID: Output{Value: cfn.GetAtt(CustomDomainResourceName, RegionalHostedZoneIdResourceName)},
+			OutputKeyWAFEnabled:               Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
+			OutputKeyWAFRules:                 Output{Value: cfg.WAFRulesJSON},
+			OutputKeyWAFScope:                 Output{Value: cfg.WAFScope},
+			OutputKeyWAFAssociationCreated:    Output{Value: cfn.Ref(WAFAssociationResourceName)},
+		}
+	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName != "" && cfg.WAFAssociation {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:                Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint:       Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:               Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:          Output{Value: cfg.APIEndpointType},
+			OutputKeyCertARN:                  Output{Value: cfg.CertificateArn},
+			OutputKeyCustomDomain:             Output{Value: cfg.CustomDomainName},
+			OutputKeyCustomDomainHostName:     Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionDomainNameResourceName)},
+			OutputKeyCustomDomainHostedZoneID: Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionHostedZoneIdResourceName)},
+			OutputKeyWAFEnabled:               Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
+			OutputKeyWAFRules:                 Output{Value: cfg.WAFRulesJSON},
+			OutputKeyWAFScope:                 Output{Value: cfg.WAFScope},
+			OutputKeyWAFAssociationCreated:    Output{Value: cfn.Ref(WAFAssociationResourceName)},
 		}
 	} else if cfg.APIEndpointType == "REGIONAL" && !cfg.WAFEnabled && cfg.CustomDomainName != "" {
 		template.Outputs = map[string]interface{}{
@@ -451,7 +485,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyCustomDomainHostName:     Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionDomainNameResourceName)},
 			OutputKeyCustomDomainHostedZoneID: Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionHostedZoneIdResourceName)},
 		}
-	} else if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName == "" {
+	} else if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName == "" && !cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
 			OutputKeyRestAPIID:          Output{Value: cfn.Ref(APIResourceName)},
 			OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
@@ -461,7 +495,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFRules:           Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:           Output{Value: cfg.WAFScope},
 		}
-	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName == "" {
+	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName == "" && !cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
 			OutputKeyRestAPIID:          Output{Value: cfn.Ref(APIResourceName)},
 			OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
@@ -470,6 +504,28 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFEnabled:         Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
 			OutputKeyWAFRules:           Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:           Output{Value: cfg.WAFScope},
+		}
+	} else if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName == "" && cfg.WAFAssociation {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:             Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint:    Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:            Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:       Output{Value: cfg.APIEndpointType},
+			OutputKeyWAFEnabled:            Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
+			OutputKeyWAFRules:              Output{Value: cfg.WAFRulesJSON},
+			OutputKeyWAFScope:              Output{Value: cfg.WAFScope},
+			OutputKeyWAFAssociationCreated: Output{Value: cfn.Ref(WAFAssociationResourceName)},
+		}
+	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName == "" && cfg.WAFAssociation {
+		template.Outputs = map[string]interface{}{
+			OutputKeyRestAPIID:             Output{Value: cfn.Ref(APIResourceName)},
+			OutputKeyAPIGatewayEndpoint:    Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
+			OutputKeyClientARNS:            Output{Value: strings.Join(cfg.Arns, ",")},
+			OutputKeyAPIEndpointType:       Output{Value: cfg.APIEndpointType},
+			OutputKeyWAFEnabled:            Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
+			OutputKeyWAFRules:              Output{Value: cfg.WAFRulesJSON},
+			OutputKeyWAFScope:              Output{Value: cfg.WAFScope},
+			OutputKeyWAFAssociationCreated: Output{Value: cfn.Ref(WAFAssociationResourceName)},
 		}
 	} else if cfg.APIEndpointType == "REGIONAL" && !cfg.WAFEnabled && cfg.CustomDomainName == "" {
 		template.Outputs = map[string]interface{}{
