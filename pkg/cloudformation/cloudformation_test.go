@@ -1,6 +1,7 @@
 package cloudformation
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,6 +13,31 @@ import (
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
+
+func getUsagePlanBytes() string {
+	usagePlan := []UsagePlan{
+		{
+			PlanName:                 "Gold",
+			Description:              "20 requests for 1 min",
+			APIKeyCustomerID:         "customer1",
+			APIKeyGenerateDistinctID: true,
+			APIKeyName:               "cusKey1",
+			QuotaLimit:               100,
+			QuotaPeriod:              "MONTH",
+			ThrottleBurstLimit:       100,
+			ThrottleRateLimit:        100,
+			MethodThrottlingParameters: []MethodThrottlingParametersObject{
+				{
+					Path:       "/api/v1/foobar",
+					BurstLimit: 100,
+					RateLimit:  100,
+				},
+			},
+		},
+	}
+	usagePlanBytes, _ := json.Marshal(usagePlan)
+	return string(usagePlanBytes)
+}
 
 func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 	tests := []struct {
@@ -76,6 +102,124 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
 					"APIGWEndpointType":  Output{Value: "EDGE"},
 					"RequestTimeout":     Output{Value: "10000"},
+				},
+			},
+		},
+		{
+			name: "generates template with usage plan",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				Arns:           []string{"arn::foo"},
+				StageName:      "baz",
+				NodePort:       30123,
+				RequestTimeout: 10000,
+				TLSPolicy:      "TLS_1_2",
+				UsagePlans: []UsagePlan{
+					{
+						PlanName:                 "Gold",
+						Description:              "20 requests for 1 min",
+						APIKeyCustomerID:         "customer1",
+						APIKeyGenerateDistinctID: true,
+						APIKeyName:               "cusKey1",
+						QuotaLimit:               100,
+						QuotaPeriod:              "MONTH",
+						ThrottleBurstLimit:       100,
+						ThrottleRateLimit:        100,
+						MethodThrottlingParameters: []MethodThrottlingParametersObject{
+							{
+								Path:       "/api/v1/foobar",
+								BurstLimit: 100,
+								RateLimit:  100,
+							},
+						},
+					},
+				},
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000),
+					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"Resourceapiv1foobarproxy": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar"), "{proxy+}"),
+					"TargetGroup":              buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE"),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+					"APIKeyUsagePlan0":         buildUsagePlanAPIKeyMapping(0),
+					"UsagePlan0": buildUsagePlan(UsagePlan{
+						PlanName:                 "Gold",
+						Description:              "20 requests for 1 min",
+						APIKeyCustomerID:         "customer1",
+						APIKeyGenerateDistinctID: true,
+						APIKeyName:               "cusKey1",
+						QuotaLimit:               100,
+						QuotaPeriod:              "MONTH",
+						ThrottleBurstLimit:       100,
+						ThrottleRateLimit:        100,
+						MethodThrottlingParameters: []MethodThrottlingParametersObject{
+							{
+								Path:       "/api/v1/foobar",
+								BurstLimit: 100,
+								RateLimit:  100,
+							},
+						},
+					}, "baz"),
+					"APIKey0": buildAPIKey(UsagePlan{
+						PlanName:                 "Gold",
+						Description:              "20 requests for 1 min",
+						APIKeyCustomerID:         "customer1",
+						APIKeyGenerateDistinctID: true,
+						APIKeyName:               "cusKey1",
+						QuotaLimit:               100,
+						QuotaPeriod:              "MONTH",
+						ThrottleBurstLimit:       100,
+						ThrottleRateLimit:        100,
+						MethodThrottlingParameters: []MethodThrottlingParametersObject{
+							{
+								Path:       "/api/v1/foobar",
+								BurstLimit: 100,
+								RateLimit:  100,
+							},
+						},
+					}),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID":          Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":  Output{Value: "EDGE"},
+					"RequestTimeout":     Output{Value: "10000"},
+					"UsagePlansData":     Output{Value: getUsagePlanBytes()},
 				},
 			},
 		},

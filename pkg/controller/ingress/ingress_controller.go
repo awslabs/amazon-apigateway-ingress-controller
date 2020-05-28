@@ -59,27 +59,28 @@ import (
 )
 
 const (
-	ingressNameLengthLimit                = 51
-	FinalizerCFNStack                     = "apigateway.networking.amazonaws.com/ingress-finalizer"
-	FinalizerRoute53CFNStack              = "apigateway.networking.amazonaws.com/route53-ingress-finalizer"
-	IngressClassAnnotation                = "kubernetes.io/ingress.class"
-	IngressAnnotationNodeSelector         = "apigateway.ingress.kubernetes.io/node-selector"
-	IngressAnnotationClientArns           = "apigateway.ingress.kubernetes.io/client-arns"
-	IngressAnnotationCustomDomainName     = "apigateway.ingress.kubernetes.io/custom-domain-name"
-	IngressAnnotationCertificateArn       = "apigateway.ingress.kubernetes.io/certificate-arn"
-	IngressAnnotationRequestTimeout       = "apigateway.ingress.kubernetes.io/request-timeout-millis"
-	IngressAnnotationTLSPolicy            = "apigateway.ingress.kubernetes.io/tls-policy"
-	IngressAnnotationStageName            = "apigateway.ingress.kubernetes.io/stage-name"
-	IngressAnnotationNginxReplicas        = "apigateway.ingress.kubernetes.io/nginx-replicas"
-	IngressAnnotationNginxImage           = "apigateway.ingress.kubernetes.io/nginx-image"
-	IngressAnnotationNginxServicePort     = "apigateway.ingress.kubernetes.io/nginx-service-port"
-	IngressAnnotationEndpointType         = "apigateway.ingress.kubernetes.io/apigw-endpoint-type"
-	IngressAnnotationWAFEnabled           = "apigateway.ingress.kubernetes.io/waf-enabled"
-	IngressAnnotationWAFRulesCFJson       = "apigateway.ingress.kubernetes.io/waf-rule-cf-json"
-	IngressAnnotationWAFScope             = "apigateway.ingress.kubernetes.io/waf-scope"
-	IngressAnnotationHostedZoneName       = "apigateway.ingress.kubernetes.io/hosted-zone-name"
-	IngressAnnotationAssumeRoute53RoleArn = "apigateway.ingress.kubernetes.io/route53-assume-role-arn"
-	Route53StackNamePostfix               = "-route53"
+	ingressNameLengthLimit                 = 51
+	FinalizerCFNStack                      = "apigateway.networking.amazonaws.com/ingress-finalizer"
+	FinalizerRoute53CFNStack               = "apigateway.networking.amazonaws.com/route53-ingress-finalizer"
+	IngressClassAnnotation                 = "kubernetes.io/ingress.class"
+	IngressAnnotationNodeSelector          = "apigateway.ingress.kubernetes.io/node-selector"
+	IngressAnnotationClientArns            = "apigateway.ingress.kubernetes.io/client-arns"
+	IngressAnnotationCustomDomainName      = "apigateway.ingress.kubernetes.io/custom-domain-name"
+	IngressAnnotationCertificateArn        = "apigateway.ingress.kubernetes.io/certificate-arn"
+	IngressAnnotationRequestTimeout        = "apigateway.ingress.kubernetes.io/request-timeout-millis"
+	IngressAnnotationTLSPolicy             = "apigateway.ingress.kubernetes.io/tls-policy"
+	IngressAnnotationStageName             = "apigateway.ingress.kubernetes.io/stage-name"
+	IngressAnnotationNginxReplicas         = "apigateway.ingress.kubernetes.io/nginx-replicas"
+	IngressAnnotationNginxImage            = "apigateway.ingress.kubernetes.io/nginx-image"
+	IngressAnnotationNginxServicePort      = "apigateway.ingress.kubernetes.io/nginx-service-port"
+	IngressAnnotationEndpointType          = "apigateway.ingress.kubernetes.io/apigw-endpoint-type"
+	IngressAnnotationWAFEnabled            = "apigateway.ingress.kubernetes.io/waf-enabled"
+	IngressAnnotationWAFRulesCFJson        = "apigateway.ingress.kubernetes.io/waf-rule-cf-json"
+	IngressAnnotationWAFScope              = "apigateway.ingress.kubernetes.io/waf-scope"
+	IngressAnnotationAPIKeyBasedUsagePlans = "apigateway.ingress.kubernetes.io/api-key-based-usage-plans"
+	IngressAnnotationHostedZoneName        = "apigateway.ingress.kubernetes.io/hosted-zone-name"
+	IngressAnnotationAssumeRoute53RoleArn  = "apigateway.ingress.kubernetes.io/route53-assume-role-arn"
+	Route53StackNamePostfix                = "-route53"
 )
 
 var (
@@ -306,7 +307,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{RequeueAfter: 20 * time.Second}, r.Update(context.TODO(), instance)
 	}
 
-	if cfn.IsComplete(*stack.StackStatus) && shouldUpdate(stack, instance, r.apigatewaySvc) {
+	if cfn.IsComplete(*stack.StackStatus) && shouldUpdate(stack, instance, r.apigatewaySvc, r) {
 		r.log.Info("updating apigateway cloudformation stack", zap.String("stackName", instance.ObjectMeta.Name))
 		if err := r.update(instance, stack); err != nil {
 			return reconcile.Result{}, err
@@ -670,6 +671,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		WAFAssociation:   getWAFEnabled(instance),
 		RequestTimeout:   getRequestTimeout(instance),
 		TLSPolicy:        getTLSPolicy(instance),
+		UsagePlans:       getUsagePlans(instance),
 	})
 
 	b, err := cfnTemplate.YAML()
@@ -732,6 +734,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cl
 		WAFAssociation:   shouldUpdateWAF(stack),
 		RequestTimeout:   getRequestTimeout(instance),
 		TLSPolicy:        getTLSPolicy(instance),
+		UsagePlans:       getUsagePlans(instance),
 	})
 	b, err := cfnTemplate.YAML()
 	if err != nil {

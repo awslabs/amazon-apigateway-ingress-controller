@@ -1,10 +1,12 @@
 package ingress
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/aws/aws-sdk-go/service/apigateway"
@@ -29,6 +31,19 @@ func getTLSPolicy(ingress *extensionsv1beta1.Ingress) string {
 		tlsPolicy = "TLS_1_0"
 	}
 	return tlsPolicy
+}
+
+func getUsagePlans(ingress *extensionsv1beta1.Ingress) []cfn.UsagePlan {
+	var usagePlansStr string = ingress.ObjectMeta.Annotations[IngressAnnotationAPIKeyBasedUsagePlans]
+	if usagePlansStr == "" {
+		return nil
+	}
+	var usagePlans []cfn.UsagePlan
+	err := json.Unmarshal([]byte(usagePlansStr), &usagePlans)
+	if err != nil {
+		return nil
+	}
+	return usagePlans
 }
 
 func getWAFScope(ingress *extensionsv1beta1.Ingress) string {
@@ -152,52 +167,96 @@ func shouldUpdateWAF(stack *cloudformation.Stack) bool {
 	return false
 }
 
-func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress, apigw apigatewayiface.APIGatewayAPI) bool {
+func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress, apigw apigatewayiface.APIGatewayAPI, r *ReconcileIngress) bool {
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS] != strings.Join(getArns(instance), ",") {
+		r.log.Info("Client Arns not matching, Should Update",
+			zap.String("Input", strings.Join(getArns(instance), ",")),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS]))
 		return true
 	}
 
 	if !(cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] == "" && !getWAFEnabled(instance)) {
 		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != fmt.Sprintf("%t", getWAFEnabled(instance)) {
+			r.log.Info("WAF Enabled Status not matching, Should Update",
+				zap.String("Input", fmt.Sprintf("%t", getWAFEnabled(instance))),
+				zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled]))
 			return true
 		}
 		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFScope] != getWAFScope(instance) {
+			r.log.Info("WAF Scope not matching, Should Update",
+				zap.String("Input", getWAFScope(instance)),
+				zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyWAFScope]))
 			return true
 		}
 		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFRules] != getWAFRulesJSON(instance) {
+			r.log.Info("WAF Rules not matching, Should Update",
+				zap.String("Input", getWAFRulesJSON(instance)),
+				zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyWAFRules]))
 			return true
 		}
 	}
 
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != "" && cfn.StackOutputMap(stack)[cfn.OutputKeyWAFAssociationCreated] == "" {
+		r.log.Info("WAF Association Status not matching, Should Update",
+			zap.String("OutputKeyWAFEnabled", cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled]),
+			zap.String("OutputKeyWAFAssociationCreated", cfn.StackOutputMap(stack)[cfn.OutputKeyWAFAssociationCreated]))
 		return true
 	}
 
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyAPIEndpointType] != getAPIEndpointType(instance) {
+		r.log.Info("API EP type not matching, Should Update",
+			zap.String("Input", getAPIEndpointType(instance)),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyAPIEndpointType]))
 		return true
 	}
 
-	if !(cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] == "" && !getWAFEnabled(instance)) {
-		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != fmt.Sprintf("%t", getWAFEnabled(instance)) {
-			return true
-		}
-		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFScope] != getWAFScope(instance) {
-			return true
-		}
-		if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFRules] != getWAFRulesJSON(instance) {
-			return true
-		}
-	}
-
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyCertARN] != getCertificateArn(instance) {
+		r.log.Info("SSL Cert Arn not matching, Should Update",
+			zap.String("Input", getCertificateArn(instance)),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyCertARN]))
 		return true
 	}
 
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyCustomDomain] != getCustomDomainName(instance) {
+		r.log.Info("TLS policy not matching, Should Update",
+			zap.String("Input", getCustomDomainName(instance)),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyCustomDomain]))
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyRequestTimeout] != fmt.Sprintf("%d", getRequestTimeout(instance)) {
+		r.log.Info("Request timeout not matching, Should Update",
+			zap.String("Input", fmt.Sprintf("%d", getRequestTimeout(instance))),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyRequestTimeout]))
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyTLSPolicy] != getTLSPolicy(instance) {
+		r.log.Info("TLS policy not matching, Should Update",
+			zap.String("Input", getTLSPolicy(instance)),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyTLSPolicy]))
 		return true
 	}
 
 	if checkProxyPaths(stack, instance, apigw) {
+		r.log.Info("Rules are not matching, Should Update")
+		return true
+	}
+
+	outUsagePlansStr := cfn.StackOutputMap(stack)[cfn.OutputKeyUsagePlans]
+	usagePlans := getUsagePlans(instance)
+	usagePlansBytes, _ := json.Marshal(usagePlans)
+	usagePlansStr := string(usagePlansBytes)
+	if usagePlans != nil && outUsagePlansStr == "" {
+		r.log.Info("Usage plans added, Should Update")
+		return true
+	} else if usagePlans == nil && outUsagePlansStr != "" {
+		r.log.Info("Usage plans removed, Should Update")
+		return true
+	} else if usagePlans != nil && outUsagePlansStr != "" && outUsagePlansStr != usagePlansStr {
+		r.log.Info("Usage plans changed, Should Update",
+			zap.String("Input", usagePlansStr),
+			zap.String("Output", outUsagePlansStr))
 		return true
 	}
 
