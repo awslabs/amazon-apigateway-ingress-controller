@@ -54,6 +54,8 @@ const (
 	OutputKeyCustomDomainHostName           = "CustomDomainHostname"
 	OutputKeyCustomDomainHostedZoneID       = "CustomDomainHostedZoneID"
 	OutputKeyHostedZone                     = "HostedZone"
+	OutputKeyRequestTimeout                 = "RequestTimeout"
+	OutputKeyTLSPolicy                      = "TLSPolicy"
 )
 
 func toLogicalName(idx int, parts []string) string {
@@ -72,7 +74,7 @@ func toPath(idx int, parts []string) string {
 	return strings.Join(parts[:idx+1], "/")
 }
 
-func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIngressPath) map[string]cfn.Resource {
+func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIngressPath, requestTimeout int) map[string]cfn.Resource {
 	m := map[string]cfn.Resource{}
 
 	for _, path := range paths {
@@ -89,7 +91,7 @@ func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIng
 
 			resourceLogicalName := fmt.Sprintf("%s%s", APIResourceResourceName, toLogicalName(idx, parts))
 			m[resourceLogicalName] = buildAWSApiGatewayResource(ref, part)
-			m[fmt.Sprintf("%s%s", APIMethodResourceID, toLogicalName(idx, parts))] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts))
+			m[fmt.Sprintf("%s%s", APIMethodResourceID, toLogicalName(idx, parts))] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout)
 		}
 	}
 
@@ -251,7 +253,7 @@ func buildAWSApiGatewayVpcLink(dependsOn []string) *apigateway.VpcLink {
 	return r
 }
 
-func buildAWSApiGatewayMethod(resourceLogicalName, path string) *apigateway.Method {
+func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int) *apigateway.Method {
 	m := &apigateway.Method{
 		RequestParameters: map[string]bool{
 			"method.request.path.proxy": true,
@@ -270,7 +272,7 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string) *apigateway.Meth
 				"integration.request.header.Accept-Encoding": "'identity'",
 			},
 			Type:            "HTTP_PROXY",
-			TimeoutInMillis: 29000,
+			TimeoutInMillis: timeout,
 			Uri:             cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
 		},
 	}
@@ -305,11 +307,12 @@ func buildCustomDomainBasePathMapping(domainName string, stageName string) *apig
 	return r
 }
 
-func buildCustomDomain(domainName string, certificateArn string, apiEPType string) *apigateway.DomainName {
+func buildCustomDomain(domainName string, certificateArn string, apiEPType string, secPolicy string) *apigateway.DomainName {
 	if apiEPType == "REGIONAL" {
 		return &apigateway.DomainName{
 			RegionalCertificateArn: certificateArn,
 			DomainName:             domainName,
+			SecurityPolicy:         secPolicy,
 			EndpointConfiguration: &apigateway.DomainName_EndpointConfiguration{
 				Types: []string{apiEPType},
 			},
@@ -339,6 +342,8 @@ type TemplateConfig struct {
 	WAFRulesJSON     string
 	WAFScope         string
 	WAFAssociation   bool
+	RequestTimeout   int
+	TLSPolicy        string
 }
 
 // BuildAPIGatewayTemplateFromIngressRule generates the cloudformation template according to the config provided
@@ -357,7 +362,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	}
 
 	methodLogicalNames := []string{}
-	resourceMap := mapApiGatewayMethodsAndResourcesFromPaths(paths)
+	resourceMap := mapApiGatewayMethodsAndResourcesFromPaths(paths, cfg.RequestTimeout)
 	for k, resource := range resourceMap {
 		if _, ok := resource.(*apigateway.Method); ok {
 			methodLogicalNames = append(methodLogicalNames, k)
@@ -390,7 +395,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	template.Resources[VPCLinkResourceName] = vPCLink
 
 	if cfg.CustomDomainName != "" && cfg.CertificateArn != "" {
-		customDomain := buildCustomDomain(cfg.CustomDomainName, cfg.CertificateArn, cfg.APIEndpointType)
+		customDomain := buildCustomDomain(cfg.CustomDomainName, cfg.CertificateArn, cfg.APIEndpointType, cfg.TLSPolicy)
 		template.Resources[CustomDomainResourceName] = customDomain
 		basePathMapping := buildCustomDomainBasePathMapping(cfg.CustomDomainName, cfg.StageName)
 		template.Resources[CustomDomainBasePathMappingResourceName] = basePathMapping
@@ -418,6 +423,8 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFEnabled:               Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
 			OutputKeyWAFRules:                 Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:                 Output{Value: cfg.WAFScope},
+			OutputKeyRequestTimeout:           Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
+			OutputKeyTLSPolicy:                Output{Value: cfg.TLSPolicy},
 		}
 	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName != "" && !cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
@@ -432,6 +439,8 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFEnabled:               Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
 			OutputKeyWAFRules:                 Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:                 Output{Value: cfg.WAFScope},
+			OutputKeyRequestTimeout:           Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
+			OutputKeyTLSPolicy:                Output{Value: cfg.TLSPolicy},
 		}
 	} else if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName != "" && cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
@@ -447,6 +456,8 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFRules:                 Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:                 Output{Value: cfg.WAFScope},
 			OutputKeyWAFAssociationCreated:    Output{Value: cfn.Ref(WAFAssociationResourceName)},
+			OutputKeyRequestTimeout:           Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
+			OutputKeyTLSPolicy:                Output{Value: cfg.TLSPolicy},
 		}
 	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName != "" && cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
@@ -462,6 +473,8 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFRules:                 Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:                 Output{Value: cfg.WAFScope},
 			OutputKeyWAFAssociationCreated:    Output{Value: cfn.Ref(WAFAssociationResourceName)},
+			OutputKeyRequestTimeout:           Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
+			OutputKeyTLSPolicy:                Output{Value: cfg.TLSPolicy},
 		}
 	} else if cfg.APIEndpointType == "REGIONAL" && !cfg.WAFEnabled && cfg.CustomDomainName != "" {
 		template.Outputs = map[string]interface{}{
@@ -473,6 +486,8 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyCustomDomain:             Output{Value: cfg.CustomDomainName},
 			OutputKeyCustomDomainHostName:     Output{Value: cfn.GetAtt(CustomDomainResourceName, RegionalDomainNameResourceName)},
 			OutputKeyCustomDomainHostedZoneID: Output{Value: cfn.GetAtt(CustomDomainResourceName, RegionalHostedZoneIdResourceName)},
+			OutputKeyRequestTimeout:           Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
+			OutputKeyTLSPolicy:                Output{Value: cfg.TLSPolicy},
 		}
 	} else if cfg.APIEndpointType == "EDGE" && !cfg.WAFEnabled && cfg.CustomDomainName != "" {
 		template.Outputs = map[string]interface{}{
@@ -484,6 +499,8 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyCustomDomain:             Output{Value: cfg.CustomDomainName},
 			OutputKeyCustomDomainHostName:     Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionDomainNameResourceName)},
 			OutputKeyCustomDomainHostedZoneID: Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionHostedZoneIdResourceName)},
+			OutputKeyRequestTimeout:           Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
+			OutputKeyTLSPolicy:                Output{Value: cfg.TLSPolicy},
 		}
 	} else if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName == "" && !cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
@@ -494,6 +511,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFEnabled:         Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
 			OutputKeyWAFRules:           Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:           Output{Value: cfg.WAFScope},
+			OutputKeyRequestTimeout:     Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
 		}
 	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName == "" && !cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
@@ -504,6 +522,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFEnabled:         Output{Value: fmt.Sprintf("%t", cfg.WAFEnabled)},
 			OutputKeyWAFRules:           Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:           Output{Value: cfg.WAFScope},
+			OutputKeyRequestTimeout:     Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
 		}
 	} else if cfg.APIEndpointType == "REGIONAL" && cfg.WAFEnabled && cfg.CustomDomainName == "" && cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
@@ -515,6 +534,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFRules:              Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:              Output{Value: cfg.WAFScope},
 			OutputKeyWAFAssociationCreated: Output{Value: cfn.Ref(WAFAssociationResourceName)},
+			OutputKeyRequestTimeout:        Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
 		}
 	} else if cfg.APIEndpointType == "EDGE" && cfg.WAFEnabled && cfg.CustomDomainName == "" && cfg.WAFAssociation {
 		template.Outputs = map[string]interface{}{
@@ -526,6 +546,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyWAFRules:              Output{Value: cfg.WAFRulesJSON},
 			OutputKeyWAFScope:              Output{Value: cfg.WAFScope},
 			OutputKeyWAFAssociationCreated: Output{Value: cfn.Ref(WAFAssociationResourceName)},
+			OutputKeyRequestTimeout:        Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
 		}
 	} else if cfg.APIEndpointType == "REGIONAL" && !cfg.WAFEnabled && cfg.CustomDomainName == "" {
 		template.Outputs = map[string]interface{}{
@@ -533,6 +554,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
 			OutputKeyClientARNS:         Output{Value: strings.Join(cfg.Arns, ",")},
 			OutputKeyAPIEndpointType:    Output{Value: cfg.APIEndpointType},
+			OutputKeyRequestTimeout:     Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
 		}
 	} else if cfg.APIEndpointType == "EDGE" && !cfg.WAFEnabled && cfg.CustomDomainName == "" {
 		template.Outputs = map[string]interface{}{
@@ -540,6 +562,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
 			OutputKeyClientARNS:         Output{Value: strings.Join(cfg.Arns, ",")},
 			OutputKeyAPIEndpointType:    Output{Value: cfg.APIEndpointType},
+			OutputKeyRequestTimeout:     Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
 		}
 	}
 

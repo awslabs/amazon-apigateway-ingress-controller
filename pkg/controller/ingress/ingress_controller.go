@@ -67,6 +67,8 @@ const (
 	IngressAnnotationClientArns           = "apigateway.ingress.kubernetes.io/client-arns"
 	IngressAnnotationCustomDomainName     = "apigateway.ingress.kubernetes.io/custom-domain-name"
 	IngressAnnotationCertificateArn       = "apigateway.ingress.kubernetes.io/certificate-arn"
+	IngressAnnotationRequestTimeout       = "apigateway.ingress.kubernetes.io/request-timeout-millis"
+	IngressAnnotationTLSPolicy            = "apigateway.ingress.kubernetes.io/tls-policy"
 	IngressAnnotationStageName            = "apigateway.ingress.kubernetes.io/stage-name"
 	IngressAnnotationNginxReplicas        = "apigateway.ingress.kubernetes.io/nginx-replicas"
 	IngressAnnotationNginxImage           = "apigateway.ingress.kubernetes.io/nginx-image"
@@ -459,7 +461,7 @@ func (r *ReconcileIngress) delete(instance *extensionsv1beta1.Ingress) (*extensi
 	if err != nil && cfn.IsDoesNotExist(err, instance.ObjectMeta.Name) {
 		r.log.Info("stack doesn't exist, removing finalizer", zap.String("stackName", instance.ObjectMeta.Name))
 		instance.SetFinalizers(finalizers.RemoveFinalizer(instance, FinalizerCFNStack))
-		return instance, nil, nil
+		return r.deleteRoute53(instance)
 	}
 
 	if err != nil {
@@ -594,7 +596,7 @@ func (r *ReconcileIngress) buildReverseProxyResources(instance *extensionsv1beta
 	return []metav1.Object{configMap, deploy, service}
 }
 
-func (r *ReconcileIngress) updateReverseProxy(instance *extensionsv1beta1.Ingress, stack *cloudformation.Stack) (*corev1.Service, error) {
+func (r *ReconcileIngress) updateReverseProxy(instance *extensionsv1beta1.Ingress) (*corev1.Service, error) {
 	objects := r.buildReverseProxyResources(instance)
 	for _, object := range objects {
 		if err := controllerutil.SetControllerReference(instance, object, r.scheme); err != nil {
@@ -606,7 +608,7 @@ func (r *ReconcileIngress) updateReverseProxy(instance *extensionsv1beta1.Ingres
 		// Fix update issue on reverse proxy. Deleting current resource. Need to find reason for this
 		configMap := &corev1.ConfigMap{}
 		deployment := &appsv1.Deployment{}
-		if stack != nil && checkProxyPaths(stack, instance, r.apigatewaySvc) && (reflect.TypeOf(object) == reflect.TypeOf(configMap) || reflect.TypeOf(object) == reflect.TypeOf(deployment)) {
+		if reflect.TypeOf(object) == reflect.TypeOf(configMap) || reflect.TypeOf(object) == reflect.TypeOf(deployment) {
 			r.log.Info("deleting reverse proxy resource config map", zap.String("gvk", runtimeObject.GetObjectKind().GroupVersionKind().String()), zap.String("name", object.GetName()))
 			r.Delete(context.TODO(), runtimeObject)
 			time.Sleep(2000 * time.Millisecond)
@@ -640,7 +642,7 @@ func (r *ReconcileIngress) updateReverseProxy(instance *extensionsv1beta1.Ingres
 
 func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensionsv1beta1.Ingress, error) {
 	r.log.Info("creating reverse proxy")
-	svc, err := r.updateReverseProxy(instance, nil)
+	svc, err := r.updateReverseProxy(instance)
 	if err != nil {
 		r.log.Error("error creating proxy resources", zap.Error(err))
 		return nil, err
@@ -666,6 +668,8 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		WAFRulesJSON:     getWAFRulesJSON(instance),
 		WAFScope:         getWAFScope(instance),
 		WAFAssociation:   getWAFEnabled(instance),
+		RequestTimeout:   getRequestTimeout(instance),
+		TLSPolicy:        getTLSPolicy(instance),
 	})
 
 	b, err := cfnTemplate.YAML()
@@ -702,13 +706,13 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cl
 	}
 
 	r.log.Info("updating proxy")
-	svc, err := r.updateReverseProxy(instance, stack)
+	svc, err := r.updateReverseProxy(instance)
 	if err != nil {
 		r.log.Error("error creating proxy resources", zap.Error(err))
 		return err
 	}
 
-  //With WAF enbled update gets a failure. To get rid of that do two updates to remove association and create it again
+	//With WAF enbled update gets a failure. To get rid of that do two updates to remove association and create it again
 	if getWAFEnabled(instance) {
 		r.log.Info("status waf association : ", zap.String("shouldUpdateWAF(stack)", fmt.Sprintf("%t", shouldUpdateWAF(stack))))
 	}
@@ -726,6 +730,8 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cl
 		WAFRulesJSON:     getWAFRulesJSON(instance),
 		WAFScope:         getWAFScope(instance),
 		WAFAssociation:   shouldUpdateWAF(stack),
+		RequestTimeout:   getRequestTimeout(instance),
+		TLSPolicy:        getTLSPolicy(instance),
 	})
 	b, err := cfnTemplate.YAML()
 	if err != nil {

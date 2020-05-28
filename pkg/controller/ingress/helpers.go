@@ -14,6 +14,23 @@ import (
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 )
 
+func getRequestTimeout(ingress *extensionsv1beta1.Ingress) int {
+	var requetTimeoutStr string = ingress.ObjectMeta.Annotations[IngressAnnotationRequestTimeout]
+	requetTimeout, err := strconv.Atoi(requetTimeoutStr)
+	if err != nil {
+		requetTimeout = 29000
+	}
+	return requetTimeout
+}
+
+func getTLSPolicy(ingress *extensionsv1beta1.Ingress) string {
+	var tlsPolicy string = ingress.ObjectMeta.Annotations[IngressAnnotationTLSPolicy]
+	if tlsPolicy == "" || (tlsPolicy != "TLS_1_0" && tlsPolicy != "TLS_1_2") {
+		tlsPolicy = "TLS_1_0"
+	}
+	return tlsPolicy
+}
+
 func getWAFScope(ingress *extensionsv1beta1.Ingress) string {
 	//Defualt type will be REGIONAL
 	var wafScope string = ingress.ObjectMeta.Annotations[IngressAnnotationWAFScope]
