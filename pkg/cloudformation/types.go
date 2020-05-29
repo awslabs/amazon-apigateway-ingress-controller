@@ -16,6 +16,18 @@ type PolicyDocument struct {
 	Statement []Statement `json:"Statement"`
 }
 
+type AllPrinciplesStatement struct {
+	Effect    string   `json:"Effect"`
+	Principal string   `json:"Principal"`
+	Action    []string `json:"Action"`
+	Resource  []string `json:"Resource"`
+}
+
+type AllPrinciplesPolicyDocument struct {
+	Version   string                   `json:"Version"`
+	Statement []AllPrinciplesStatement `json:"Statement"`
+}
+
 type UsagePlan struct {
 	PlanName                   string                             `json:"plan_name"`
 	Description                string                             `json:"description"`

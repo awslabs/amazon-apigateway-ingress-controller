@@ -168,7 +168,7 @@ func shouldUpdateWAF(stack *cloudformation.Stack) bool {
 }
 
 func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress, apigw apigatewayiface.APIGatewayAPI, r *ReconcileIngress) bool {
-	if cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS] != strings.Join(getArns(instance), ",") {
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyUsagePlans] == "" && cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS] != strings.Join(getArns(instance), ",") {
 		r.log.Info("Client Arns not matching, Should Update",
 			zap.String("Input", strings.Join(getArns(instance), ",")),
 			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS]))

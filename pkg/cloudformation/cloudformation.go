@@ -78,7 +78,7 @@ func toPath(idx int, parts []string) string {
 	return strings.Join(parts[:idx+1], "/")
 }
 
-func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIngressPath, requestTimeout int) map[string]cfn.Resource {
+func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIngressPath, requestTimeout int, authorizationType string) map[string]cfn.Resource {
 	m := map[string]cfn.Resource{}
 
 	for _, path := range paths {
@@ -95,7 +95,7 @@ func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIng
 
 			resourceLogicalName := fmt.Sprintf("%s%s", APIResourceResourceName, toLogicalName(idx, parts))
 			m[resourceLogicalName] = buildAWSApiGatewayResource(ref, part)
-			m[fmt.Sprintf("%s%s", APIMethodResourceID, toLogicalName(idx, parts))] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout)
+			m[fmt.Sprintf("%s%s", APIMethodResourceID, toLogicalName(idx, parts))] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType)
 		}
 	}
 
@@ -110,24 +110,45 @@ func buildAWSApiGatewayResource(ref, part string) *apigateway.Resource {
 	}
 }
 
-func buildAWSApiGatewayRestAPI(arns []string, apiEPType string) *apigateway.RestApi {
-	return &apigateway.RestApi{
-		ApiKeySourceType: "HEADER",
-		EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
-			Types: []string{apiEPType},
-		},
-		Name: cfn.Ref(AWSStackName),
-		Policy: &PolicyDocument{
-			Version: "2012-10-17",
-			Statement: []Statement{
-				{
-					Action:    []string{"execute-api:Invoke"},
-					Effect:    "Allow",
-					Principal: map[string][]string{"AWS": arns},
-					Resource:  []string{"*"},
+func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationType string) *apigateway.RestApi {
+	if authorizationType == "AWS_IAM" {
+		return &apigateway.RestApi{
+			ApiKeySourceType: "HEADER",
+			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
+				Types: []string{apiEPType},
+			},
+			Name: cfn.Ref(AWSStackName),
+			Policy: &PolicyDocument{
+				Version: "2012-10-17",
+				Statement: []Statement{
+					{
+						Action:    []string{"execute-api:Invoke"},
+						Effect:    "Allow",
+						Principal: map[string][]string{"AWS": arns},
+						Resource:  []string{"*"},
+					},
 				},
 			},
-		},
+		}
+	} else {
+		return &apigateway.RestApi{
+			ApiKeySourceType: "HEADER",
+			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
+				Types: []string{apiEPType},
+			},
+			Name: cfn.Ref(AWSStackName),
+			Policy: &AllPrinciplesPolicyDocument{
+				Version: "2012-10-17",
+				Statement: []AllPrinciplesStatement{
+					{
+						Action:    []string{"execute-api:Invoke"},
+						Effect:    "Allow",
+						Principal: "*",
+						Resource:  []string{"*"},
+					},
+				},
+			},
+		}
 	}
 }
 
@@ -257,12 +278,21 @@ func buildAWSApiGatewayVpcLink(dependsOn []string) *apigateway.VpcLink {
 	return r
 }
 
-func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int) *apigateway.Method {
+func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, authorizationType string) *apigateway.Method {
+	var apiKeyRequired bool
+
+	if authorizationType == "AWS_IAM" {
+		apiKeyRequired = false
+	} else {
+		apiKeyRequired = true
+	}
+
 	m := &apigateway.Method{
 		RequestParameters: map[string]bool{
 			"method.request.path.proxy": true,
 		},
-		AuthorizationType: "AWS_IAM",
+		AuthorizationType: authorizationType,
+		ApiKeyRequired:    apiKeyRequired,
 		HttpMethod:        "ANY",
 		ResourceId:        cfn.Ref(resourceLogicalName),
 		RestApiId:         cfn.Ref(APIResourceName),
@@ -366,6 +396,8 @@ func buildUsagePlan(usagePlan UsagePlan, stage string) *apigateway.UsagePlan {
 
 	r.ApiStages = buildMethodThrottling(usagePlan.MethodThrottlingParameters, stage)
 
+	r.AWSCloudFormationDependsOn = []string{DeploymentResourceName}
+
 	return r
 }
 
@@ -432,8 +464,15 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		cfg.WAFScope = "REGIONAL"
 	}
 
+	var authorizationType string
+	if cfg.UsagePlans != nil && len(cfg.UsagePlans) > 0 {
+		authorizationType = "NONE"
+	} else {
+		authorizationType = "AWS_IAM"
+	}
+
 	methodLogicalNames := []string{}
-	resourceMap := mapApiGatewayMethodsAndResourcesFromPaths(paths, cfg.RequestTimeout)
+	resourceMap := mapApiGatewayMethodsAndResourcesFromPaths(paths, cfg.RequestTimeout, authorizationType)
 	for k, resource := range resourceMap {
 		if _, ok := resource.(*apigateway.Method); ok {
 			methodLogicalNames = append(methodLogicalNames, k)
@@ -453,7 +492,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Resources[fmt.Sprintf("%s%d", SecurityGroupIngressResourceName, i)] = sgI
 	}
 
-	restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType)
+	restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType)
 	template.Resources[APIResourceName] = restAPI
 
 	deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames)
@@ -492,9 +531,15 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	template.Outputs = map[string]interface{}{
 		OutputKeyRestAPIID:          Output{Value: cfn.Ref(APIResourceName)},
 		OutputKeyAPIGatewayEndpoint: Output{Value: cfn.Join("", []string{"https://", cfn.Ref(APIResourceName), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})},
-		OutputKeyClientARNS:         Output{Value: strings.Join(cfg.Arns, ",")},
 		OutputKeyAPIEndpointType:    Output{Value: cfg.APIEndpointType},
 		OutputKeyRequestTimeout:     Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
+	}
+
+	if cfg.UsagePlans != nil && len(cfg.UsagePlans) > 0 {
+		val, _ := json.Marshal(cfg.UsagePlans)
+		template.Outputs[OutputKeyUsagePlans] = Output{Value: string(val)}
+	} else {
+		template.Outputs[OutputKeyClientARNS] = Output{Value: strings.Join(cfg.Arns, ",")}
 	}
 
 	if cfg.WAFEnabled {
@@ -521,11 +566,6 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Outputs[OutputKeyCustomDomainHostName] = Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionDomainNameResourceName)}
 		template.Outputs[OutputKeyCustomDomainHostedZoneID] = Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionHostedZoneIdResourceName)}
 		template.Outputs[OutputKeyTLSPolicy] = Output{Value: cfg.TLSPolicy}
-	}
-
-	if cfg.UsagePlans != nil && len(cfg.UsagePlans) > 0 {
-		val, _ := json.Marshal(cfg.UsagePlans)
-		template.Outputs[OutputKeyUsagePlans] = Output{Value: string(val)}
 	}
 
 	return template
