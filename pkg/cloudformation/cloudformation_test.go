@@ -10,22 +10,32 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/awslabs/amazon-apigateway-ingress-controller/pkg/network"
 	cfn "github.com/awslabs/goformation/v4/cloudformation"
+	"github.com/awslabs/goformation/v4/cloudformation/apigateway"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-func getUsagePlanBytes() string {
-	usagePlan := []UsagePlan{
+func getUsagePlans() []UsagePlan {
+	return []UsagePlan{
 		{
-			PlanName:                 "Gold",
-			Description:              "20 requests for 1 min",
-			APIKeyCustomerID:         "customer1",
-			APIKeyGenerateDistinctID: true,
-			APIKeyName:               "cusKey1",
-			QuotaLimit:               100,
-			QuotaPeriod:              "MONTH",
-			ThrottleBurstLimit:       100,
-			ThrottleRateLimit:        100,
+			PlanName:    "Gold",
+			Description: "20 requests for 1 min",
+			APIKeys: []APIKey{
+				{
+					CustomerID:         "customer1",
+					GenerateDistinctID: true,
+					Name:               "cusKey1",
+				},
+				{
+					CustomerID:         "customer2",
+					GenerateDistinctID: true,
+					Name:               "cusKey2",
+				},
+			},
+			QuotaLimit:         100,
+			QuotaPeriod:        "MONTH",
+			ThrottleBurstLimit: 100,
+			ThrottleRateLimit:  100,
 			MethodThrottlingParameters: []MethodThrottlingParametersObject{
 				{
 					Path:       "/api/v1/foobar",
@@ -35,8 +45,62 @@ func getUsagePlanBytes() string {
 			},
 		},
 	}
+}
+
+func getUsagePlan() UsagePlan {
+	return UsagePlan{
+		PlanName:    "Gold",
+		Description: "20 requests for 1 min",
+		APIKeys: []APIKey{
+			{
+				CustomerID:         "customer1",
+				GenerateDistinctID: true,
+				Name:               "cusKey1",
+			},
+			{
+				CustomerID:         "customer2",
+				GenerateDistinctID: true,
+				Name:               "cusKey2",
+			},
+		},
+		QuotaLimit:         100,
+		QuotaPeriod:        "MONTH",
+		ThrottleBurstLimit: 100,
+		ThrottleRateLimit:  100,
+		MethodThrottlingParameters: []MethodThrottlingParametersObject{
+			{
+				Path:       "/api/v1/foobar",
+				BurstLimit: 100,
+				RateLimit:  100,
+			},
+		},
+	}
+}
+
+func getUsagePlanBytes() string {
+	usagePlan := getUsagePlans()
 	usagePlanBytes, _ := json.Marshal(usagePlan)
 	return string(usagePlanBytes)
+}
+
+func getAPIKeyMappingBuild(i int, k int) *apigateway.UsagePlanKey {
+	arr := buildUsagePlanAPIKeyMapping(getUsagePlan(), k)
+	for k, key := range arr {
+		if k == i {
+			return key
+		}
+	}
+	return nil
+}
+
+func getAPIKeyBuild(i int) *apigateway.ApiKey {
+	arr := buildAPIKey(getUsagePlan())
+	for k, key := range arr {
+		if k == i {
+			return key
+		}
+	}
+	return nil
 }
 
 func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
@@ -137,26 +201,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 				NodePort:       30123,
 				RequestTimeout: 10000,
 				TLSPolicy:      "TLS_1_2",
-				UsagePlans: []UsagePlan{
-					{
-						PlanName:                 "Gold",
-						Description:              "20 requests for 1 min",
-						APIKeyCustomerID:         "customer1",
-						APIKeyGenerateDistinctID: true,
-						APIKeyName:               "cusKey1",
-						QuotaLimit:               100,
-						QuotaPeriod:              "MONTH",
-						ThrottleBurstLimit:       100,
-						ThrottleRateLimit:        100,
-						MethodThrottlingParameters: []MethodThrottlingParametersObject{
-							{
-								Path:       "/api/v1/foobar",
-								BurstLimit: 100,
-								RateLimit:  100,
-							},
-						},
-					},
-				},
+				UsagePlans:     getUsagePlans(),
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
@@ -175,43 +220,11 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
 					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
-					"APIKeyUsagePlan0":         buildUsagePlanAPIKeyMapping(0),
-					"UsagePlan0": buildUsagePlan(UsagePlan{
-						PlanName:                 "Gold",
-						Description:              "20 requests for 1 min",
-						APIKeyCustomerID:         "customer1",
-						APIKeyGenerateDistinctID: true,
-						APIKeyName:               "cusKey1",
-						QuotaLimit:               100,
-						QuotaPeriod:              "MONTH",
-						ThrottleBurstLimit:       100,
-						ThrottleRateLimit:        100,
-						MethodThrottlingParameters: []MethodThrottlingParametersObject{
-							{
-								Path:       "/api/v1/foobar",
-								BurstLimit: 100,
-								RateLimit:  100,
-							},
-						},
-					}, "baz"),
-					"APIKey0": buildAPIKey(UsagePlan{
-						PlanName:                 "Gold",
-						Description:              "20 requests for 1 min",
-						APIKeyCustomerID:         "customer1",
-						APIKeyGenerateDistinctID: true,
-						APIKeyName:               "cusKey1",
-						QuotaLimit:               100,
-						QuotaPeriod:              "MONTH",
-						ThrottleBurstLimit:       100,
-						ThrottleRateLimit:        100,
-						MethodThrottlingParameters: []MethodThrottlingParametersObject{
-							{
-								Path:       "/api/v1/foobar",
-								BurstLimit: 100,
-								RateLimit:  100,
-							},
-						},
-					}),
+					"APIKeyUsagePlan00":        getAPIKeyMappingBuild(0, 0),
+					"APIKeyUsagePlan01":        getAPIKeyMappingBuild(1, 0),
+					"UsagePlan0":               buildUsagePlan(getUsagePlan(), "baz"),
+					"APIKey00":                 getAPIKeyBuild(0),
+					"APIKey01":                 getAPIKeyBuild(1),
 				},
 				Outputs: map[string]interface{}{
 					"RestAPIID":          Output{Value: cfn.Ref("RestAPI")},

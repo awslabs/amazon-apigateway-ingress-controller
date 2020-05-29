@@ -362,21 +362,35 @@ func buildCustomDomain(domainName string, certificateArn string, apiEPType strin
 
 }
 
-func buildUsagePlanAPIKeyMapping(i int) *apigateway.UsagePlanKey {
-	return &apigateway.UsagePlanKey{
-		KeyId:       cfn.Ref(fmt.Sprintf("%s%d", APIKeyResourceName, i)),
-		KeyType:     "API_KEY",
-		UsagePlanId: cfn.Ref(fmt.Sprintf("%s%d", UsagePlanResourceName, i)),
+func buildUsagePlanAPIKeyMapping(usagePlan UsagePlan, i int) []*apigateway.UsagePlanKey {
+	if usagePlan.APIKeys == nil {
+		return nil
 	}
+	arr := make([]*apigateway.UsagePlanKey, len(usagePlan.APIKeys))
+	for k, _ := range usagePlan.APIKeys {
+		arr[k] = &apigateway.UsagePlanKey{
+			KeyId:       cfn.Ref(fmt.Sprintf("%s%d%d", APIKeyResourceName, i, k)),
+			KeyType:     "API_KEY",
+			UsagePlanId: cfn.Ref(fmt.Sprintf("%s%d", UsagePlanResourceName, i)),
+		}
+	}
+	return arr
 }
 
-func buildAPIKey(usagePlan UsagePlan) *apigateway.ApiKey {
-	return &apigateway.ApiKey{
-		CustomerId:         usagePlan.APIKeyCustomerID,
-		GenerateDistinctId: usagePlan.APIKeyGenerateDistinctID,
-		Name:               usagePlan.APIKeyName,
-		Enabled:            true,
+func buildAPIKey(usagePlan UsagePlan) []*apigateway.ApiKey {
+	if usagePlan.APIKeys == nil {
+		return nil
 	}
+	arr := make([]*apigateway.ApiKey, len(usagePlan.APIKeys))
+	for k, key := range usagePlan.APIKeys {
+		arr[k] = &apigateway.ApiKey{
+			CustomerId:         key.CustomerID,
+			GenerateDistinctId: key.GenerateDistinctID,
+			Name:               key.Name,
+			Enabled:            true,
+		}
+	}
+	return arr
 }
 
 func buildUsagePlan(usagePlan UsagePlan, stage string) *apigateway.UsagePlan {
@@ -477,7 +491,6 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		if _, ok := resource.(*apigateway.Method); ok {
 			methodLogicalNames = append(methodLogicalNames, k)
 		}
-
 		template.Resources[k] = resource
 	}
 
@@ -513,9 +526,15 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 
 	if cfg.UsagePlans != nil && len(cfg.UsagePlans) > 0 {
 		for i, usagePlan := range cfg.UsagePlans {
-			template.Resources[fmt.Sprintf("%s%d", APIKeyResourceName, i)] = buildAPIKey(usagePlan)
+			keyArr := buildAPIKey(usagePlan)
+			for k, key := range keyArr {
+				template.Resources[fmt.Sprintf("%s%d%d", APIKeyResourceName, i, k)] = key
+			}
 			template.Resources[fmt.Sprintf("%s%d", UsagePlanResourceName, i)] = buildUsagePlan(usagePlan, cfg.StageName)
-			template.Resources[fmt.Sprintf("%s%d", APIKeyUsagePlanResourceName, i)] = buildUsagePlanAPIKeyMapping(i)
+			mapArr := buildUsagePlanAPIKeyMapping(usagePlan, i)
+			for k, key := range mapArr {
+				template.Resources[fmt.Sprintf("%s%d%d", APIKeyUsagePlanResourceName, i, k)] = key
+			}
 		}
 	}
 

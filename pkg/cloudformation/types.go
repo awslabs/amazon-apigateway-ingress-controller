@@ -31,15 +31,19 @@ type AllPrinciplesPolicyDocument struct {
 type UsagePlan struct {
 	PlanName                   string                             `json:"plan_name"`
 	Description                string                             `json:"description"`
-	APIKeyCustomerID           string                             `json:"api_key_customer_id"`
-	APIKeyGenerateDistinctID   bool                               `json:"api_key_generate_distinct_id"`
-	APIKeyName                 string                             `json:"api_key_name"`
+	APIKeys                    []APIKey                           `json:"api_keys"`
 	QuotaLimit                 int                                `json:"quota_limit"`
 	QuotaOffset                int                                `json:"quota_offset"`
 	QuotaPeriod                string                             `json:"quota_period"`
 	ThrottleBurstLimit         int                                `json:"throttle_burst_limit"`
 	ThrottleRateLimit          float64                            `json:"throttle_rate_limit"`
 	MethodThrottlingParameters []MethodThrottlingParametersObject `json:"method_throttling_parameters"`
+}
+
+type APIKey struct {
+	CustomerID         string `json:"customer_id"`
+	GenerateDistinctID bool   `json:"generate_distinct_id"`
+	Name               string `json:"name"`
 }
 
 type MethodThrottlingParametersObject struct {
