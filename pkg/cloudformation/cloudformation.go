@@ -345,6 +345,7 @@ func buildAPIKey(usagePlan UsagePlan) *apigateway.ApiKey {
 		CustomerId:         usagePlan.APIKeyCustomerID,
 		GenerateDistinctId: usagePlan.APIKeyGenerateDistinctID,
 		Name:               usagePlan.APIKeyName,
+		Enabled:            true,
 	}
 }
 
