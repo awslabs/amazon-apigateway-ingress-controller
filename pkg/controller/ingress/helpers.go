@@ -79,6 +79,19 @@ func getWAFEnabled(ingress *extensionsv1beta1.Ingress) bool {
 	return wafEnabled
 }
 
+func getCompressionSize(ingress *extensionsv1beta1.Ingress) int {
+	maxCompressSize := ingress.ObjectMeta.Annotations[IngressAnnotationMinimumCompressionSize]
+	if maxCompressSize == "" {
+		return 0
+	} else {
+		i, err := strconv.Atoi(maxCompressSize)
+		if err == nil {
+			return i
+		}
+	}
+	return 0
+}
+
 func getWAFRulesJSON(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationWAFRulesCFJson]
 }
@@ -241,6 +254,8 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 	if checkProxyPaths(stack, instance, apigw) {
 		r.log.Info("Rules are not matching, Should Update")
 		return true
+	} else {
+		r.log.Debug("Rules are matching, Should Update not triggered.")
 	}
 
 	outUsagePlansStr := cfn.StackOutputMap(stack)[cfn.OutputKeyUsagePlans]
@@ -257,6 +272,27 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		r.log.Info("Usage plans changed, Should Update",
 			zap.String("Input", usagePlansStr),
 			zap.String("Output", outUsagePlansStr))
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputMinimumCompressionSize] == "" && getCompressionSize(instance) == 0 {
+		r.log.Debug("Minimum Compression Size not set. Should Update not triggered",
+			zap.String("Input", fmt.Sprintf("%d", getCompressionSize(instance))),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputMinimumCompressionSize]))
+	} else if cfn.StackOutputMap(stack)[cfn.OutputMinimumCompressionSize] == "" && getCompressionSize(instance) > 0 {
+		r.log.Info("Minimum Compression Size added, Should Update",
+			zap.String("Input", fmt.Sprintf("%d", getCompressionSize(instance))),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputMinimumCompressionSize]))
+		return true
+	} else if cfn.StackOutputMap(stack)[cfn.OutputMinimumCompressionSize] != "" && getCompressionSize(instance) == 0 {
+		r.log.Info("Minimum Compression Size removed, Should Update",
+			zap.String("Input", fmt.Sprintf("%d", getCompressionSize(instance))),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputMinimumCompressionSize]))
+		return true
+	} else if cfn.StackOutputMap(stack)[cfn.OutputMinimumCompressionSize] != fmt.Sprintf("%d", getCompressionSize(instance)) {
+		r.log.Info("Minimum Compression Size not matching, Should Update",
+			zap.String("Input", fmt.Sprintf("%d", getCompressionSize(instance))),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputMinimumCompressionSize]))
 		return true
 	}
 
@@ -307,8 +343,9 @@ func checkProxyPaths(stack *cloudformation.Stack, instance *extensionsv1beta1.In
 			//To identity removed paths
 			for _, apiItem := range items {
 				var needUpdates bool = true
+				apiPath := strings.Replace(*apiItem.Path, "/{proxy+}", "", -1)
 				for _, path := range ingressRule.HTTP.Paths {
-					if strings.HasPrefix(*apiItem.Path, path.Path) || strings.HasPrefix(path.Path, *apiItem.Path) {
+					if strings.Compare(path.Path, apiPath) == 0 || strings.HasPrefix(path.Path, *apiItem.Path) {
 						needUpdates = false
 						break
 					}

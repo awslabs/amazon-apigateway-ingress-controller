@@ -41,6 +41,7 @@ metadata:
     apigateway.ingress.kubernetes.io/route53-assume-role-arn: arn:aws:iam::xxx:role/xxx
     apigateway.ingress.kubernetes.io/request-timeout-millis: "10000"
     apigateway.ingress.kubernetes.io/tls-policy: TLS_1_2
+    apigateway.ingress.kubernetes.io/min-compression-size: "52428800"
     apigateway.ingress.kubernetes.io/api-key-based-usage-plans: '[{"plan_name":"Gold","description":"Gold plan","api_keys":[{"customer_id":"cus1","generate_distinct_id":true,"name":"cus1_key1"},{"customer_id":"cus2","generate_distinct_id":true,"name":"cus2_key1"}],"quota_limit":100,"quota_period":"Month","throttle_burst_limit":100,"throttle_rate_limit":100,"method_throttling_parameters":[{"path":"/api/book/","burst_limit":100,"rate_limit":100},{"path":"/api/author/","burst_limit":100,"rate_limit":100}]},{"plan_name":"Silver","description":"Silver Plan","api_keys":[{"customer_id":"cus1","generate_distinct_id":true,"name":"cus1_key2"},{"customer_id":"cus2","generate_distinct_id":true,"name":"cus2_key2"}],"quota_limit":50,"quota_period":"Month","throttle_burst_limit":50,"throttle_rate_limit":50,"method_throttling_parameters":[{"path":"/api/book/","burst_limit":50,"rate_limit":50},{"path":"/api/author/","burst_limit":50,"rate_limit":50}]}]'
     apigateway.ingress.kubernetes.io/waf-enabled: "true"
     apigateway.ingress.kubernetes.io/waf-scope: REGIONAL

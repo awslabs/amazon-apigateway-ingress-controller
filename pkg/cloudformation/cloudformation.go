@@ -50,6 +50,7 @@ const (
 	OutputKeyClientARNS                     = "ClientARNS"
 	OutputKeyCertARN                        = "SSLCertArn"
 	OutputKeyCustomDomain                   = "CustomDomainName"
+	OutputMinimumCompressionSize            = "MinimumCompressionSize"
 	OutputKeyWAFEnabled                     = "WAFEnabled"
 	OutputKeyWAFRules                       = "WAFRules"
 	OutputKeyWAFScope                       = "WAFScope"
@@ -110,8 +111,28 @@ func buildAWSApiGatewayResource(ref, part string) *apigateway.Resource {
 	}
 }
 
-func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationType string) *apigateway.RestApi {
-	if authorizationType == "AWS_IAM" {
+func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationType string, minimumCompressionSize int) *apigateway.RestApi {
+	if authorizationType == "AWS_IAM" && minimumCompressionSize > 0 {
+		return &apigateway.RestApi{
+			MinimumCompressionSize: minimumCompressionSize,
+			ApiKeySourceType:       "HEADER",
+			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
+				Types: []string{apiEPType},
+			},
+			Name: cfn.Ref(AWSStackName),
+			Policy: &PolicyDocument{
+				Version: "2012-10-17",
+				Statement: []Statement{
+					{
+						Action:    []string{"execute-api:Invoke"},
+						Effect:    "Allow",
+						Principal: map[string][]string{"AWS": arns},
+						Resource:  []string{"*"},
+					},
+				},
+			},
+		}
+	} else if authorizationType == "AWS_IAM" && minimumCompressionSize == 0 {
 		return &apigateway.RestApi{
 			ApiKeySourceType: "HEADER",
 			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
@@ -125,6 +146,26 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 						Action:    []string{"execute-api:Invoke"},
 						Effect:    "Allow",
 						Principal: map[string][]string{"AWS": arns},
+						Resource:  []string{"*"},
+					},
+				},
+			},
+		}
+	} else if minimumCompressionSize > 0 {
+		return &apigateway.RestApi{
+			MinimumCompressionSize: minimumCompressionSize,
+			ApiKeySourceType:       "HEADER",
+			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
+				Types: []string{apiEPType},
+			},
+			Name: cfn.Ref(AWSStackName),
+			Policy: &AllPrinciplesPolicyDocument{
+				Version: "2012-10-17",
+				Statement: []AllPrinciplesStatement{
+					{
+						Action:    []string{"execute-api:Invoke"},
+						Effect:    "Allow",
+						Principal: "*",
 						Resource:  []string{"*"},
 					},
 				},
@@ -446,21 +487,22 @@ func buildMethodThrottling(methodThrottlingParameters []MethodThrottlingParamete
 
 //TemplateConfig is the structure of configuration used to provide data to build the cf template
 type TemplateConfig struct {
-	Network          *network.Network
-	Rule             extensionsv1beta1.IngressRule
-	NodePort         int
-	StageName        string
-	Arns             []string
-	CustomDomainName string
-	CertificateArn   string
-	APIEndpointType  string
-	WAFEnabled       bool
-	WAFRulesJSON     string
-	WAFScope         string
-	WAFAssociation   bool
-	RequestTimeout   int
-	TLSPolicy        string
-	UsagePlans       []UsagePlan
+	Network                *network.Network
+	Rule                   extensionsv1beta1.IngressRule
+	NodePort               int
+	StageName              string
+	Arns                   []string
+	CustomDomainName       string
+	CertificateArn         string
+	APIEndpointType        string
+	WAFEnabled             bool
+	WAFRulesJSON           string
+	WAFScope               string
+	WAFAssociation         bool
+	RequestTimeout         int
+	TLSPolicy              string
+	UsagePlans             []UsagePlan
+	MinimumCompressionSize int
 }
 
 // BuildAPIGatewayTemplateFromIngressRule generates the cloudformation template according to the config provided
@@ -505,7 +547,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Resources[fmt.Sprintf("%s%d", SecurityGroupIngressResourceName, i)] = sgI
 	}
 
-	restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType)
+	restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType, cfg.MinimumCompressionSize)
 	template.Resources[APIResourceName] = restAPI
 
 	deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames)
@@ -559,6 +601,10 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Outputs[OutputKeyUsagePlans] = Output{Value: string(val)}
 	} else {
 		template.Outputs[OutputKeyClientARNS] = Output{Value: strings.Join(cfg.Arns, ",")}
+	}
+
+	if cfg.MinimumCompressionSize > 0 {
+		template.Outputs[OutputMinimumCompressionSize] = Output{fmt.Sprintf("%d", cfg.MinimumCompressionSize)}
 	}
 
 	if cfg.WAFEnabled {
