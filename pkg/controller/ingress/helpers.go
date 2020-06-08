@@ -96,6 +96,10 @@ func getWAFRulesJSON(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationWAFRulesCFJson]
 }
 
+func getCustomDomainBasePath(ingress *extensionsv1beta1.Ingress) string {
+	return ingress.ObjectMeta.Annotations[IngressAnnotationCustomDomainBasePath]
+}
+
 func getCustomDomainName(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationCustomDomainName]
 }
@@ -231,9 +235,16 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 	}
 
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyCustomDomain] != getCustomDomainName(instance) {
-		r.log.Info("TLS policy not matching, Should Update",
+		r.log.Info("Custom Domain not matching, Should Update",
 			zap.String("Input", getCustomDomainName(instance)),
 			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyCustomDomain]))
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyCustomDomainBasePath] != getCustomDomainBasePath(instance) {
+		r.log.Info("Custom Domain Base Path not matching, Should Update",
+			zap.String("Input", getCustomDomainBasePath(instance)),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyCustomDomainBasePath]))
 		return true
 	}
 

@@ -50,6 +50,7 @@ const (
 	OutputKeyClientARNS                     = "ClientARNS"
 	OutputKeyCertARN                        = "SSLCertArn"
 	OutputKeyCustomDomain                   = "CustomDomainName"
+	OutputKeyCustomDomainBasePath           = "CustomDomainBasePath"
 	OutputMinimumCompressionSize            = "MinimumCompressionSize"
 	OutputKeyWAFEnabled                     = "WAFEnabled"
 	OutputKeyWAFRules                       = "WAFRules"
@@ -371,11 +372,21 @@ func buildAWSEC2SecurityGroupIngresses(securityGroupIds []string, cidr string, n
 	return sgIngresses
 }
 
-func buildCustomDomainBasePathMapping(domainName string, stageName string) *apigateway.BasePathMapping {
-	r := &apigateway.BasePathMapping{
-		DomainName: domainName,
-		RestApiId:  cfn.Ref(APIResourceName),
-		Stage:      stageName,
+func buildCustomDomainBasePathMapping(domainName string, stageName string, basePath string) *apigateway.BasePathMapping {
+	var r *apigateway.BasePathMapping
+	if basePath == "" {
+		r = &apigateway.BasePathMapping{
+			DomainName: domainName,
+			RestApiId:  cfn.Ref(APIResourceName),
+			Stage:      stageName,
+		}
+	} else {
+		r = &apigateway.BasePathMapping{
+			DomainName: domainName,
+			RestApiId:  cfn.Ref(APIResourceName),
+			Stage:      stageName,
+			BasePath:   basePath,
+		}
 	}
 
 	r.AWSCloudFormationDependsOn = []string{DeploymentResourceName}
@@ -493,6 +504,7 @@ type TemplateConfig struct {
 	StageName              string
 	Arns                   []string
 	CustomDomainName       string
+	CustomDomainBasePath   string
 	CertificateArn         string
 	APIEndpointType        string
 	WAFEnabled             bool
@@ -562,7 +574,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	if cfg.CustomDomainName != "" && cfg.CertificateArn != "" {
 		customDomain := buildCustomDomain(cfg.CustomDomainName, cfg.CertificateArn, cfg.APIEndpointType, cfg.TLSPolicy)
 		template.Resources[CustomDomainResourceName] = customDomain
-		basePathMapping := buildCustomDomainBasePathMapping(cfg.CustomDomainName, cfg.StageName)
+		basePathMapping := buildCustomDomainBasePathMapping(cfg.CustomDomainName, cfg.StageName, cfg.CustomDomainBasePath)
 		template.Resources[CustomDomainBasePathMappingResourceName] = basePathMapping
 	}
 
@@ -623,6 +635,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Outputs[OutputKeyCustomDomainHostName] = Output{Value: cfn.GetAtt(CustomDomainResourceName, RegionalDomainNameResourceName)}
 		template.Outputs[OutputKeyCustomDomainHostedZoneID] = Output{Value: cfn.GetAtt(CustomDomainResourceName, RegionalHostedZoneIdResourceName)}
 		template.Outputs[OutputKeyTLSPolicy] = Output{Value: cfg.TLSPolicy}
+		template.Outputs[OutputKeyCustomDomainBasePath] = Output{Value: cfg.CustomDomainBasePath}
 	}
 
 	if cfg.APIEndpointType == "EDGE" && cfg.CustomDomainName != "" {
@@ -631,6 +644,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Outputs[OutputKeyCustomDomainHostName] = Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionDomainNameResourceName)}
 		template.Outputs[OutputKeyCustomDomainHostedZoneID] = Output{Value: cfn.GetAtt(CustomDomainResourceName, DistributionHostedZoneIdResourceName)}
 		template.Outputs[OutputKeyTLSPolicy] = Output{Value: cfg.TLSPolicy}
+		template.Outputs[OutputKeyCustomDomainBasePath] = Output{Value: cfg.CustomDomainBasePath}
 	}
 
 	return template

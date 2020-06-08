@@ -38,6 +38,7 @@ metadata:
     apigateway.ingress.kubernetes.io/custom-domain-name: apigw-test.example.com
     apigateway.ingress.kubernetes.io/certificate-arn: arn:aws:acm:xxx:xxx:certificate/xxx
     apigateway.ingress.kubernetes.io/hosted-zone-name: example.com.
+    apigateway.ingress.kubernetes.io/custom-domain-base-path: api
     apigateway.ingress.kubernetes.io/route53-assume-role-arn: arn:aws:iam::xxx:role/xxx
     apigateway.ingress.kubernetes.io/request-timeout-millis: "10000"
     apigateway.ingress.kubernetes.io/tls-policy: TLS_1_2

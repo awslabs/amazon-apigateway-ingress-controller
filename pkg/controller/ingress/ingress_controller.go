@@ -66,6 +66,7 @@ const (
 	IngressAnnotationNodeSelector           = "apigateway.ingress.kubernetes.io/node-selector"
 	IngressAnnotationClientArns             = "apigateway.ingress.kubernetes.io/client-arns"
 	IngressAnnotationCustomDomainName       = "apigateway.ingress.kubernetes.io/custom-domain-name"
+	IngressAnnotationCustomDomainBasePath   = "apigateway.ingress.kubernetes.io/custom-domain-base-path"
 	IngressAnnotationCertificateArn         = "apigateway.ingress.kubernetes.io/certificate-arn"
 	IngressAnnotationRequestTimeout         = "apigateway.ingress.kubernetes.io/request-timeout-millis"
 	IngressAnnotationTLSPolicy              = "apigateway.ingress.kubernetes.io/tls-policy"
@@ -664,6 +665,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		Arns:                   getArns(instance),
 		StageName:              getStageName(instance),
 		CustomDomainName:       getCustomDomainName(instance),
+		CustomDomainBasePath:   getCustomDomainBasePath(instance),
 		CertificateArn:         getCertificateArn(instance),
 		APIEndpointType:        getAPIEndpointType(instance),
 		WAFEnabled:             getWAFEnabled(instance),
@@ -728,6 +730,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cl
 		StageName:              getStageName(instance),
 		NodePort:               int(svc.Spec.Ports[0].NodePort),
 		CustomDomainName:       getCustomDomainName(instance),
+		CustomDomainBasePath:   getCustomDomainBasePath(instance),
 		CertificateArn:         getCertificateArn(instance),
 		APIEndpointType:        getAPIEndpointType(instance),
 		WAFEnabled:             getWAFEnabled(instance),
