@@ -46,6 +46,19 @@ func getUsagePlans(ingress *extensionsv1beta1.Ingress) []cfn.UsagePlan {
 	return usagePlans
 }
 
+func getAPIResources(ingress *extensionsv1beta1.Ingress) []cfn.APIResource {
+	var apiResourcesStr string = ingress.ObjectMeta.Annotations[IngressAnnotationPublicResources]
+	if apiResourcesStr == "" {
+		return nil
+	}
+	var apiResources []cfn.APIResource
+	err := json.Unmarshal([]byte(apiResourcesStr), &apiResources)
+	if err != nil {
+		return nil
+	}
+	return apiResources
+}
+
 func getWAFScope(ingress *extensionsv1beta1.Ingress) string {
 	//Defualt type will be REGIONAL
 	var wafScope string = ingress.ObjectMeta.Annotations[IngressAnnotationWAFScope]
@@ -77,6 +90,21 @@ func getWAFEnabled(ingress *extensionsv1beta1.Ingress) bool {
 		}
 	}
 	return wafEnabled
+}
+
+func getGWCacheEnabled(ingress *extensionsv1beta1.Ingress) bool {
+	var cacheEnabledStr string = ingress.ObjectMeta.Annotations[IngressAnnotationGWCacheEnabled]
+	var cacheEnabled bool
+	var err error
+	if cacheEnabledStr == "" {
+		cacheEnabled = false
+	} else {
+		cacheEnabled, err = strconv.ParseBool(cacheEnabledStr)
+		if err != nil {
+			cacheEnabled = false
+		}
+	}
+	return cacheEnabled
 }
 
 func getCompressionSize(ingress *extensionsv1beta1.Ingress) int {
@@ -172,6 +200,12 @@ func getNginxReplicas(ingress *extensionsv1beta1.Ingress) int {
 
 func shouldUpdateRoute53(mainStack *cloudformation.Stack, stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress) bool {
 	if cfn.StackOutputMap(stack)[cfn.OutputKeyHostedZone] != getHostedZoneName(instance) {
+		return true
+	}
+	if cfn.StackOutputMap(mainStack)[cfn.OutputKeyCustomDomainHostName] != cfn.StackOutputMap(stack)[cfn.OutputKeyCustomDomainHostName] {
+		return true
+	}
+	if cfn.StackOutputMap(mainStack)[cfn.OutputKeyCustomDomain] != cfn.StackOutputMap(stack)[cfn.OutputKeyCustomDomain] {
 		return true
 	}
 	return false
@@ -283,6 +317,23 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		r.log.Info("Usage plans changed, Should Update",
 			zap.String("Input", usagePlansStr),
 			zap.String("Output", outUsagePlansStr))
+		return true
+	}
+
+	outAPIResourcesStr := cfn.StackOutputMap(stack)[cfn.OutputAPIResources]
+	apiResources := getAPIResources(instance)
+	apiResourcesBytes, _ := json.Marshal(apiResources)
+	apiResourcesStr := string(apiResourcesBytes)
+	if apiResources != nil && outAPIResourcesStr == "" {
+		r.log.Info("API Resources added, Should Update")
+		return true
+	} else if apiResources == nil && outAPIResourcesStr != "" {
+		r.log.Info("API Resources removed, Should Update")
+		return true
+	} else if apiResources != nil && outAPIResourcesStr != "" && outAPIResourcesStr != apiResourcesStr {
+		r.log.Info("API Resources changed, Should Update",
+			zap.String("Input", apiResourcesStr),
+			zap.String("Output", outAPIResourcesStr))
 		return true
 	}
 

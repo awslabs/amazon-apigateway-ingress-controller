@@ -103,6 +103,21 @@ func getAPIKeyBuild(i int) *apigateway.ApiKey {
 	return nil
 }
 
+func getAPIResources() []APIResource {
+	return []APIResource{
+		{
+			Path:           "/api/v1/foobar",
+			Method:         "GET",
+			CachingEnabled: false,
+		},
+	}
+}
+
+func getAPIResourcesBytes() string {
+	resourcesBytes, _ := json.Marshal(getAPIResources())
+	return string(resourcesBytes)
+}
+
 func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -145,10 +160,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -157,7 +172,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0),
-					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 				},
@@ -206,10 +221,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -218,7 +233,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 1000000000),
-					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 				},
@@ -269,10 +284,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE"),
-					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE"),
-					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE"),
-					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE"),
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY"),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY"),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY"),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY"),
 					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -281,7 +296,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 1000000000),
-					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"APIKeyUsagePlan00":        getAPIKeyMappingBuild(0, 0),
@@ -337,10 +352,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE"),
-					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE"),
-					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE"),
-					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE"),
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY"),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY"),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY"),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY"),
 					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -349,7 +364,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 0),
-					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"APIKeyUsagePlan00":        getAPIKeyMappingBuild(0, 0),
@@ -406,10 +421,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -418,7 +433,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0),
-					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"WAFAcl":                   buildAWSWAFWebACL("REGIONAL", "[]"),
@@ -477,10 +492,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -489,7 +504,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "REGIONAL", "AWS_IAM", 0),
-					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"WAFAcl":                   buildAWSWAFWebACL("REGIONAL", "[]"),
@@ -546,10 +561,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -558,7 +573,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0),
-					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"WAFAcl":                   buildAWSWAFWebACL("REGIONAL", ""),
@@ -616,10 +631,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":              buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":        buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -628,7 +643,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                 buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":    buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0),
-					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":             buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                  buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"WAFAcl":                   buildAWSWAFWebACL("REGIONAL", ""),
@@ -685,10 +700,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -697,7 +712,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                    buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":       buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0),
-					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":                buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                     buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"CustomDomain":                buildCustomDomain("example.com", "arn::foobar", "EDGE", "TLS_1_2"),
@@ -714,6 +729,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"CustomDomainHostedZoneID": Output{Value: cfn.GetAtt("CustomDomain", "DistributionHostedZoneId")},
 					"RequestTimeout":           Output{Value: "10000"},
 					"TLSPolicy":                Output{Value: "TLS_1_2"},
+					"CustomDomainBasePath":     Output{Value: ""},
 				},
 			},
 		},
@@ -756,10 +772,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -768,7 +784,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                    buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":       buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0),
-					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":                buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                     buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"CustomDomain":                buildCustomDomain("example.com", "arn::foobar", "EDGE", "TLS_1_2"),
@@ -785,6 +801,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"CustomDomainHostedZoneID": Output{Value: cfn.GetAtt("CustomDomain", "DistributionHostedZoneId")},
 					"RequestTimeout":           Output{Value: "10000"},
 					"TLSPolicy":                Output{Value: "TLS_1_2"},
+					"CustomDomainBasePath":     Output{Value: "foo"},
 				},
 			},
 		},
@@ -827,10 +844,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -839,7 +856,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                    buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":       buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "REGIONAL", "AWS_IAM", 0),
-					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":                buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                     buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"CustomDomain":                buildCustomDomain("example.com", "arn::foobar", "REGIONAL", "TLS_1_2"),
@@ -856,6 +873,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"CustomDomainHostedZoneID": Output{Value: cfn.GetAtt("CustomDomain", "RegionalHostedZoneId")},
 					"RequestTimeout":           Output{Value: "10000"},
 					"TLSPolicy":                Output{Value: "TLS_1_2"},
+					"CustomDomainBasePath":     Output{Value: ""},
 				},
 			},
 		},
@@ -900,10 +918,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -912,7 +930,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                    buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":       buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0),
-					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":                buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                     buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"CustomDomain":                buildCustomDomain("example.com", "arn::foobar", "EDGE", "TLS_1_2"),
@@ -935,6 +953,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"WAFAssociation":           Output{Value: cfn.Ref("WAFAssociation")},
 					"RequestTimeout":           Output{Value: "10000"},
 					"TLSPolicy":                Output{Value: "TLS_1_2"},
+					"CustomDomainBasePath":     Output{Value: ""},
 				},
 			},
 		},
@@ -979,10 +998,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -991,7 +1010,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                    buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":       buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0),
-					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":                buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                     buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"CustomDomain":                buildCustomDomain("example.com", "arn::foobar", "EDGE", "TLS_1_2"),
@@ -1013,6 +1032,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"WAFAssociation":           Output{Value: cfn.Ref("WAFAssociation")},
 					"RequestTimeout":           Output{Value: "10000"},
 					"TLSPolicy":                Output{Value: "TLS_1_2"},
+					"CustomDomainBasePath":     Output{Value: ""},
 				},
 			},
 		},
@@ -1058,10 +1078,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
-					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM"),
+					"Methodapi":                   buildAWSApiGatewayMethod("Resourceapi", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1":                 buildAWSApiGatewayMethod("Resourceapiv1", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobar":           buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
+					"Methodapiv1foobarproxy":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY"),
 					"Resourceapi":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
 					"Resourceapiv1":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
 					"Resourceapiv1foobar":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
@@ -1070,7 +1090,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"Listener":                    buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":       buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "REGIONAL", "AWS_IAM", 0),
-					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}),
+					"Deployment":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi", "Methodapiv1", "Methodapiv1foobar", "Methodapiv1foobarproxy"}, false, nil),
 					"LoadBalancer":                buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                     buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"CustomDomain":                buildCustomDomain("example.com", "arn::foobar", "REGIONAL", "TLS_1_2"),
@@ -1093,6 +1113,127 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"WAFAssociation":           Output{Value: cfn.Ref("WAFAssociation")},
 					"RequestTimeout":           Output{Value: "10000"},
 					"TLSPolicy":                Output{Value: "TLS_1_2"},
+					"CustomDomainBasePath":     Output{Value: ""},
+				},
+			},
+		},
+		{
+			name: "generates template with defined public apis",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				Arns:                   []string{"arn::foo"},
+				StageName:              "baz",
+				NodePort:               30123,
+				RequestTimeout:         10000,
+				TLSPolicy:              "TLS_1_2",
+				MinimumCompressionSize: 0,
+				APIResources:           getAPIResources(),
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Methodapiv1foobar":     buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET"),
+					"Resourceapi":           buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":         buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":   buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"TargetGroup":           buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":              buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0": buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI":               buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0),
+					"Deployment":            buildAWSApiGatewayDeployment("baz", []string{"Methodapiv1foobar"}, false, getAPIResources()),
+					"LoadBalancer":          buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":               buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID":          Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":  Output{Value: "EDGE"},
+					"RequestTimeout":     Output{Value: "10000"},
+					"APIResources":       Output{Value: getAPIResourcesBytes()},
+				},
+			},
+		},
+		{
+			name: "generates template with defined public apis with cache",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				Arns:                   []string{"arn::foo"},
+				StageName:              "baz",
+				NodePort:               30123,
+				RequestTimeout:         10000,
+				TLSPolicy:              "TLS_1_2",
+				MinimumCompressionSize: 0,
+				APIResources:           getAPIResources(),
+				CachingEnabled:         true,
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"Methodapiv1foobar":     buildAWSApiGatewayMethod("Resourceapiv1foobar", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET"),
+					"Resourceapi":           buildAWSApiGatewayResource(cfn.GetAtt("RestAPI", "RootResourceId"), "api"),
+					"Resourceapiv1":         buildAWSApiGatewayResource(cfn.Ref("Resourceapi"), "v1"),
+					"Resourceapiv1foobar":   buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1"), "foobar"),
+					"TargetGroup":           buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":              buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0": buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI":               buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0),
+					"Deployment":            buildAWSApiGatewayDeployment("baz", []string{"Methodapiv1foobar"}, true, getAPIResources()),
+					"LoadBalancer":          buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":               buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID":          Output{Value: cfn.Ref("RestAPI")},
+					"APIGatewayEndpoint": Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"ClientARNS":         Output{Value: strings.Join([]string{"arn::foo"}, ",")},
+					"APIGWEndpointType":  Output{Value: "EDGE"},
+					"RequestTimeout":     Output{Value: "10000"},
+					"CachingEnabled":     Output{Value: "true"},
+					"APIResources":       Output{Value: getAPIResourcesBytes()},
 				},
 			},
 		},

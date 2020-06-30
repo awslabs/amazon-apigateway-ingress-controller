@@ -51,3 +51,9 @@ type MethodThrottlingParametersObject struct {
 	BurstLimit int     `json:"burst_limit"`
 	RateLimit  float64 `json:"rate_limit"`
 }
+
+type APIResource struct {
+	Path           string `json:"path"`
+	CachingEnabled bool   `json:"caching_enabled"`
+	Method         string `json:"method"`
+}
