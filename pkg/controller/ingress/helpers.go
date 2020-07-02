@@ -77,6 +77,10 @@ func getAPIEndpointType(ingress *extensionsv1beta1.Ingress) string {
 	return endpointType
 }
 
+func getCacheSize(ingress *extensionsv1beta1.Ingress) string {
+	return ingress.ObjectMeta.Annotations[IngressAnnotationGWCacheSize]
+}
+
 func getWAFEnabled(ingress *extensionsv1beta1.Ingress) bool {
 	var wafEnabledStr string = ingress.ObjectMeta.Annotations[IngressAnnotationWAFEnabled]
 	var wafEnabled bool
@@ -296,13 +300,6 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		return true
 	}
 
-	if checkProxyPaths(stack, instance, apigw) {
-		r.log.Info("Rules are not matching, Should Update")
-		return true
-	} else {
-		r.log.Debug("Rules are matching, Should Update not triggered.")
-	}
-
 	outUsagePlansStr := cfn.StackOutputMap(stack)[cfn.OutputKeyUsagePlans]
 	usagePlans := getUsagePlans(instance)
 	usagePlansBytes, _ := json.Marshal(usagePlans)
@@ -320,7 +317,7 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		return true
 	}
 
-	outAPIResourcesStr := cfn.StackOutputMap(stack)[cfn.OutputAPIResources]
+	outAPIResourcesStr := cfn.StackOutputMap(stack)[cfn.OutputKeyAPIResources]
 	apiResources := getAPIResources(instance)
 	apiResourcesBytes, _ := json.Marshal(apiResources)
 	apiResourcesStr := string(apiResourcesBytes)
@@ -358,6 +355,31 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		return true
 	}
 
+	if apiResources == nil && outAPIResourcesStr == "" && checkProxyPaths(stack, instance, apigw) {
+		r.log.Info("Rules are not matching, Should Update")
+		return true
+	} else {
+		r.log.Debug("Rules are matching, Should Update not triggered.")
+	}
+
+	if getGWCacheEnabled(instance) && cfn.StackOutputMap(stack)[cfn.OutputKeyCachingEnabled] != fmt.Sprintf("%t", getGWCacheEnabled(instance)) {
+		r.log.Info("Cache Enabled Status not matching, Should Update",
+			zap.String("Input", fmt.Sprintf("%t", getGWCacheEnabled(instance))),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyCachingEnabled]))
+		return true
+	} else if !getGWCacheEnabled(instance) && cfn.StackOutputMap(stack)[cfn.OutputKeyCachingEnabled] != "" {
+		r.log.Info("Cache Enabled Status not matching, Should Update",
+			zap.String("Input", fmt.Sprintf("%t", getGWCacheEnabled(instance))),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyCachingEnabled]))
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyCacheClusterSize] != getCacheSize(instance) {
+		r.log.Info("Cache Size not matching, Should Update",
+			zap.String("Input", getCacheSize(instance)),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyCacheClusterSize]))
+		return true
+	}
 	return false
 }
 

@@ -53,7 +53,15 @@ type MethodThrottlingParametersObject struct {
 }
 
 type APIResource struct {
-	Path           string `json:"path"`
-	CachingEnabled bool   `json:"caching_enabled"`
-	Method         string `json:"method"`
+	Path              string   `json:"path"`
+	CachingEnabled    bool     `json:"caching_enabled"`
+	Methods           []string `json:"method"`
+	ProxyPathParams   []Param  `json:"path_params"`
+	ProxyQueryParams  []Param  `json:"query_params"`
+	ProxyHeaderParams []Param  `json:"header_params"`
+}
+
+type Param struct {
+	Param    string `json:"param"`
+	Required bool   `json:"required"`
 }

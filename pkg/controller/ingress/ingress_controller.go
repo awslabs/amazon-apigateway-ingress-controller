@@ -84,6 +84,7 @@ const (
 	IngressAnnotationAssumeRoute53RoleArn   = "apigateway.ingress.kubernetes.io/route53-assume-role-arn"
 	IngressAnnotationPublicResources        = "apigateway.ingress.kubernetes.io/public-resources"
 	IngressAnnotationGWCacheEnabled         = "apigateway.ingress.kubernetes.io/gateway-cache-enabled"
+	IngressAnnotationGWCacheSize            = "apigateway.ingress.kubernetes.io/gateway-cache-size"
 	Route53StackNamePostfix                 = "-route53"
 )
 
@@ -679,6 +680,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		UsagePlans:             getUsagePlans(instance),
 		MinimumCompressionSize: getCompressionSize(instance),
 		CachingEnabled:         getGWCacheEnabled(instance),
+		CachingSize:            getCacheSize(instance),
 		APIResources:           getAPIResources(instance),
 	})
 
@@ -734,6 +736,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cl
 		StageName:              getStageName(instance),
 		NodePort:               int(svc.Spec.Ports[0].NodePort),
 		CustomDomainName:       getCustomDomainName(instance),
+		CustomDomainBasePath:   getCustomDomainBasePath(instance),
 		CertificateArn:         getCertificateArn(instance),
 		APIEndpointType:        getAPIEndpointType(instance),
 		WAFEnabled:             getWAFEnabled(instance),
@@ -745,6 +748,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cl
 		UsagePlans:             getUsagePlans(instance),
 		MinimumCompressionSize: getCompressionSize(instance),
 		CachingEnabled:         getGWCacheEnabled(instance),
+		CachingSize:            getCacheSize(instance),
 		APIResources:           getAPIResources(instance),
 	})
 	b, err := cfnTemplate.YAML()

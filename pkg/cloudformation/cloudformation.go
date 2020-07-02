@@ -62,13 +62,14 @@ const (
 	OutputKeyRequestTimeout                 = "RequestTimeout"
 	OutputKeyTLSPolicy                      = "TLSPolicy"
 	OutputKeyUsagePlans                     = "UsagePlansData"
-	OutputCachingEnabled                    = "CachingEnabled"
-	OutputAPIResources                      = "APIResources"
+	OutputKeyCachingEnabled                 = "CachingEnabled"
+	OutputKeyCacheClusterSize               = "CachingSize"
+	OutputKeyAPIResources                   = "APIResources"
 )
 
 func toLogicalName(idx int, parts []string) string {
 	s := strings.Join(parts[:idx+1], "")
-	remove := []string{"{", "}", "+", "-", "*"}
+	remove := []string{"{", "}", "+", "-", "*", "_"}
 	for _, char := range remove {
 		s = strings.Replace(s, char, "", -1)
 	}
@@ -99,7 +100,9 @@ func mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(resources []APIResource, r
 			resourceLogicalName := fmt.Sprintf("%s%s", APIResourceResourceName, toLogicalName(idx, parts))
 			m[resourceLogicalName] = buildAWSApiGatewayResource(ref, part)
 			if idx == len(parts)-1 {
-				m[fmt.Sprintf("%s%s", APIMethodResourceID, toLogicalName(idx, parts))] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, resource.Method)
+				for _, method := range resource.Methods {
+					m[fmt.Sprintf("%s%s%s", APIMethodResourceID, toLogicalName(idx, parts), method)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, method, resource)
+				}
 			}
 		}
 	}
@@ -124,7 +127,7 @@ func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIng
 
 			resourceLogicalName := fmt.Sprintf("%s%s", APIResourceResourceName, toLogicalName(idx, parts))
 			m[resourceLogicalName] = buildAWSApiGatewayResource(ref, part)
-			m[fmt.Sprintf("%s%s", APIMethodResourceID, toLogicalName(idx, parts))] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, "ANY")
+			m[fmt.Sprintf("%s%s", APIMethodResourceID, toLogicalName(idx, parts))] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, "ANY", APIResource{})
 		}
 	}
 
@@ -270,28 +273,35 @@ func buildResourcePath(path string) string {
 }
 
 func buildAWSAPIGWDeploymentMethodSettings(cachingEnabled bool, apiResources []APIResource) []apigateway.Deployment_MethodSetting {
-	var methodSettings []apigateway.Deployment_MethodSetting
+	methodSettings := make([]apigateway.Deployment_MethodSetting, 1)
 	if cachingEnabled && apiResources != nil && len(apiResources) > 0 {
-		methodSettings = make([]apigateway.Deployment_MethodSetting, len(apiResources))
-		for k, resource := range apiResources {
-			methodSetting := apigateway.Deployment_MethodSetting{
-				ResourcePath:   buildResourcePath(resource.Path),
-				HttpMethod:     resource.Method,
-				CachingEnabled: resource.CachingEnabled,
+		for i, resource := range apiResources {
+			for j, method := range resource.Methods {
+				methodSetting := apigateway.Deployment_MethodSetting{
+					ResourcePath:   buildResourcePath(resource.Path),
+					HttpMethod:     method,
+					CachingEnabled: resource.CachingEnabled,
+				}
+				if i == 0 && j == 0 {
+					methodSettings[0] = methodSetting
+				} else {
+					methodSettings = append(methodSettings, methodSetting)
+				}
 			}
-			methodSettings[k] = methodSetting
 		}
 	}
 	return methodSettings
 }
 
-func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingEnabled bool, apiResources []APIResource) *apigateway.Deployment {
+func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingEnabled bool, apiResources []APIResource, cacheSize string) *apigateway.Deployment {
 	d := &apigateway.Deployment{
 		RestApiId: cfn.Ref(APIResourceName),
 		StageName: stageName,
 		StageDescription: &apigateway.Deployment_StageDescription{
-			CachingEnabled: cachingEnabled,
-			MethodSettings: buildAWSAPIGWDeploymentMethodSettings(cachingEnabled, apiResources),
+			CacheClusterEnabled: cachingEnabled,
+			CacheClusterSize:    cacheSize,
+			CacheDataEncrypted:  cachingEnabled,
+			MethodSettings:      buildAWSAPIGWDeploymentMethodSettings(cachingEnabled, apiResources),
 		},
 	}
 
@@ -373,7 +383,7 @@ func buildAWSApiGatewayVpcLink(dependsOn []string) *apigateway.VpcLink {
 	return r
 }
 
-func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, authorizationType string, method string) *apigateway.Method {
+func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, authorizationType string, method string, resource APIResource) *apigateway.Method {
 	var apiKeyRequired bool
 
 	if authorizationType == "AWS_IAM" {
@@ -382,10 +392,40 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		apiKeyRequired = true
 	}
 
+	requestParams := make(map[string]bool)
+	requestParams["method.request.path.proxy"] = true
+	integrationRequestParams := make(map[string]string)
+	integrationRequestParams["integration.request.path.proxy"] = "method.request.path.proxy"
+	integrationRequestParams["integration.request.header.Accept-Encoding"] = "'identity'"
+	if resource.Path != "" {
+		if resource.ProxyPathParams != nil && len(resource.ProxyPathParams) > 0 {
+			for _, param := range resource.ProxyPathParams {
+				mathodVarName := fmt.Sprintf("method.request.path.%s", param.Param)
+				intVarName := fmt.Sprintf("integration.request.path.%s", param.Param)
+				requestParams[mathodVarName] = true
+				integrationRequestParams[intVarName] = mathodVarName
+			}
+		}
+		if resource.ProxyQueryParams != nil && len(resource.ProxyQueryParams) > 0 {
+			for _, param := range resource.ProxyQueryParams {
+				mathodVarName := fmt.Sprintf("method.request.query.%s", param.Param)
+				intVarName := fmt.Sprintf("integration.request.query.%s", param.Param)
+				requestParams[mathodVarName] = true
+				integrationRequestParams[intVarName] = mathodVarName
+			}
+		}
+		if resource.ProxyHeaderParams != nil && len(resource.ProxyHeaderParams) > 0 {
+			for _, param := range resource.ProxyHeaderParams {
+				mathodVarName := fmt.Sprintf("method.request.header.%s", param.Param)
+				intVarName := fmt.Sprintf("integration.request.header.%s", param.Param)
+				requestParams[mathodVarName] = true
+				integrationRequestParams[intVarName] = mathodVarName
+			}
+		}
+	}
+
 	m := &apigateway.Method{
-		RequestParameters: map[string]bool{
-			"method.request.path.proxy": true,
-		},
+		RequestParameters: requestParams,
 		AuthorizationType: authorizationType,
 		ApiKeyRequired:    apiKeyRequired,
 		HttpMethod:        method,
@@ -396,13 +436,10 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 			ConnectionType:        "VPC_LINK",
 			IntegrationHttpMethod: "ANY",
 			PassthroughBehavior:   "WHEN_NO_MATCH",
-			RequestParameters: map[string]string{
-				"integration.request.path.proxy":             "method.request.path.proxy",
-				"integration.request.header.Accept-Encoding": "'identity'",
-			},
-			Type:            "HTTP_PROXY",
-			TimeoutInMillis: timeout,
-			Uri:             cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
+			RequestParameters:     integrationRequestParams,
+			Type:                  "HTTP_PROXY",
+			TimeoutInMillis:       timeout,
+			Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
 		},
 	}
 
@@ -569,6 +606,7 @@ type TemplateConfig struct {
 	UsagePlans             []UsagePlan
 	MinimumCompressionSize int
 	CachingEnabled         bool
+	CachingSize            string
 	APIResources           []APIResource
 }
 
@@ -586,6 +624,14 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	//Making default regional as cloudfront is not supported in all regions
 	if cfg.WAFEnabled && cfg.WAFScope == "" {
 		cfg.WAFScope = "REGIONAL"
+	}
+
+	if !cfg.CachingEnabled && cfg.CachingSize != "" {
+		cfg.CachingEnabled = true
+	}
+
+	if cfg.CachingEnabled && cfg.CachingSize == "" {
+		cfg.CachingSize = "0.5"
 	}
 
 	var authorizationType string
@@ -623,7 +669,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType, cfg.MinimumCompressionSize)
 	template.Resources[APIResourceName] = restAPI
 
-	deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources)
+	deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources, cfg.CachingSize)
 	template.Resources[DeploymentResourceName] = deployment
 
 	loadBalancer := buildAWSElasticLoadBalancingV2LoadBalancer(cfg.Network.SubnetIDs)
@@ -708,13 +754,14 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Outputs[OutputKeyCustomDomainBasePath] = Output{Value: cfg.CustomDomainBasePath}
 	}
 
-	if cfg.CachingEnabled {
-		template.Outputs[OutputCachingEnabled] = Output{Value: fmt.Sprintf("%t", cfg.CachingEnabled)}
+	if cfg.CachingEnabled && cfg.CachingSize != "" {
+		template.Outputs[OutputKeyCachingEnabled] = Output{Value: fmt.Sprintf("%t", cfg.CachingEnabled)}
+		template.Outputs[OutputKeyCacheClusterSize] = Output{Value: cfg.CachingSize}
 	}
 
 	if cfg.APIResources != nil && len(cfg.APIResources) > 0 {
 		val, _ := json.Marshal(cfg.APIResources)
-		template.Outputs[OutputAPIResources] = Output{Value: string(val)}
+		template.Outputs[OutputKeyAPIResources] = Output{Value: string(val)}
 	}
 
 	return template
