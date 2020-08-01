@@ -85,6 +85,7 @@ const (
 	IngressAnnotationPublicResources        = "apigateway.ingress.kubernetes.io/public-resources"
 	IngressAnnotationGWCacheEnabled         = "apigateway.ingress.kubernetes.io/gateway-cache-enabled"
 	IngressAnnotationGWCacheSize            = "apigateway.ingress.kubernetes.io/gateway-cache-size"
+	IngressAnnotationAWSAPIConfigs          = "apigateway.ingress.kubernetes.io/aws-api-configs"
 	Route53StackNamePostfix                 = "-route53"
 )
 
@@ -682,6 +683,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		CachingEnabled:         getGWCacheEnabled(instance),
 		CachingSize:            getCacheSize(instance),
 		APIResources:           getAPIResources(instance),
+		AWSAPIDefinitions:      getAWSAPIConfigs(instance),
 	})
 
 	b, err := cfnTemplate.YAML()
@@ -750,6 +752,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cl
 		CachingEnabled:         getGWCacheEnabled(instance),
 		CachingSize:            getCacheSize(instance),
 		APIResources:           getAPIResources(instance),
+		AWSAPIDefinitions:      getAWSAPIConfigs(instance),
 	})
 	b, err := cfnTemplate.YAML()
 	if err != nil {

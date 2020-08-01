@@ -61,6 +61,23 @@ type APIResource struct {
 	ProxyHeaderParams []Param  `json:"header_params"`
 }
 
+type AWSAPIDefinition struct {
+	Name                         string      `json:"name,omitempty"`
+	Context                      string      `json:"context"`
+	IdentitySource               string      `json:"id_source"`
+	AuthorizerType               string      `json:"authorizer_type,omitempty"` //can be TOKEN, COGNITO_USER_POOLS or REQUEST
+	AuthorizerAuthType           string      `json:"authorizer_auth_type"`
+	AuthorizerName               string      `json:"authorizer_name"`
+	IdentityValidationExpression string      `json:"id_validation_exp"`
+	AuthorizerResultTtlInSeconds int         `json:"authorizer_result_ttl_secs"`
+	AuthorizerUri                string      `json:"lambda_arn"`
+	ProviderARNs                 []string    `json:"provider_arns"`
+	AuthenticationEnabled        bool        `json:"authentication_enabled"`
+	APIKeyEnabled                bool        `json:"api_key_enabled"`
+	Authorization_Enabled        bool        `json:"authorization_enabled"`
+	UsagePlans                   []UsagePlan `json:"usage_plans"`
+}
+
 type Param struct {
 	Param    string `json:"param"`
 	Required bool   `json:"required"`

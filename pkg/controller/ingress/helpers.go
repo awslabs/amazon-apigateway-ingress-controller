@@ -59,6 +59,19 @@ func getAPIResources(ingress *extensionsv1beta1.Ingress) []cfn.APIResource {
 	return apiResources
 }
 
+func getAWSAPIConfigs(ingress *extensionsv1beta1.Ingress) []cfn.AWSAPIDefinition {
+	var awsAPIConfigStr string = ingress.ObjectMeta.Annotations[IngressAnnotationAWSAPIConfigs]
+	if awsAPIConfigStr == "" {
+		return nil
+	}
+	var awsAPIConfigs []cfn.AWSAPIDefinition
+	err := json.Unmarshal([]byte(awsAPIConfigStr), &awsAPIConfigs)
+	if err != nil {
+		return nil
+	}
+	return awsAPIConfigs
+}
+
 func getWAFScope(ingress *extensionsv1beta1.Ingress) string {
 	//Defualt type will be REGIONAL
 	var wafScope string = ingress.ObjectMeta.Annotations[IngressAnnotationWAFScope]
@@ -216,14 +229,14 @@ func shouldUpdateRoute53(mainStack *cloudformation.Stack, stack *cloudformation.
 }
 
 func shouldUpdateWAF(stack *cloudformation.Stack) bool {
-	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != "" && cfn.StackOutputMap(stack)[cfn.OutputKeyWAFAssociationCreated] == "" {
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != "" && cfn.StackOutputMap(stack)[fmt.Sprintf("%s%d", cfn.OutputKeyWAFAssociationCreated, 0)] == "" {
 		return true
 	}
 	return false
 }
 
 func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress, apigw apigatewayiface.APIGatewayAPI, r *ReconcileIngress) bool {
-	if cfn.StackOutputMap(stack)[cfn.OutputKeyUsagePlans] == "" && cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS] != strings.Join(getArns(instance), ",") {
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS] != strings.Join(getArns(instance), ",") {
 		r.log.Info("Client Arns not matching, Should Update",
 			zap.String("Input", strings.Join(getArns(instance), ",")),
 			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyClientARNS]))
@@ -251,10 +264,10 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		}
 	}
 
-	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != "" && cfn.StackOutputMap(stack)[cfn.OutputKeyWAFAssociationCreated] == "" {
+	if cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled] != "" && cfn.StackOutputMap(stack)[fmt.Sprintf("%s%d", cfn.OutputKeyWAFAssociationCreated, 0)] == "" {
 		r.log.Info("WAF Association Status not matching, Should Update",
 			zap.String("OutputKeyWAFEnabled", cfn.StackOutputMap(stack)[cfn.OutputKeyWAFEnabled]),
-			zap.String("OutputKeyWAFAssociationCreated", cfn.StackOutputMap(stack)[cfn.OutputKeyWAFAssociationCreated]))
+			zap.String("OutputKeyWAFAssociationCreated", cfn.StackOutputMap(stack)[fmt.Sprintf("%s%d", cfn.OutputKeyWAFAssociationCreated, 0)]))
 		return true
 	}
 
@@ -297,6 +310,23 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		r.log.Info("TLS policy not matching, Should Update",
 			zap.String("Input", getTLSPolicy(instance)),
 			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyTLSPolicy]))
+		return true
+	}
+
+	outAWSAPIConfigsStr := cfn.StackOutputMap(stack)[cfn.OutputKeyAWSAPIConfigs]
+	awsAPIConfigs := getAWSAPIConfigs(instance)
+	awsAPIConfigBytes, _ := json.Marshal(awsAPIConfigs)
+	awsAPIConfigsStr := string(awsAPIConfigBytes)
+	if awsAPIConfigs != nil && outAWSAPIConfigsStr == "" {
+		r.log.Info("AWS API Configs added, Should Update")
+		return true
+	} else if awsAPIConfigs == nil && outAWSAPIConfigsStr != "" {
+		r.log.Info("AWS API Configs removed, Should Update")
+		return true
+	} else if awsAPIConfigs != nil && outAWSAPIConfigsStr != "" && outAWSAPIConfigsStr != awsAPIConfigsStr {
+		r.log.Info("AWS API Configs changed, Should Update",
+			zap.String("Input", awsAPIConfigsStr),
+			zap.String("Output", outAWSAPIConfigsStr))
 		return true
 	}
 
@@ -355,7 +385,7 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		return true
 	}
 
-	if apiResources == nil && outAPIResourcesStr == "" && checkProxyPaths(stack, instance, apigw) {
+	if checkProxyPaths(stack, instance, apigw) {
 		r.log.Info("Rules are not matching, Should Update")
 		return true
 	} else {
@@ -384,7 +414,7 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 }
 
 func checkProxyPaths(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingress, apigw apigatewayiface.APIGatewayAPI) bool {
-	apiId := cfn.StackOutputMap(stack)[cfn.OutputKeyRestAPIID]
+	apiId := cfn.StackOutputMap(stack)[fmt.Sprintf("%s%d", cfn.OutputKeyRestAPIID, 0)]
 	var getResourceInput apigateway.GetResourcesInput
 	var limit int64
 	limit = 500

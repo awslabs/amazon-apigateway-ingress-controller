@@ -32,6 +32,7 @@ kind: Ingress
 metadata:
   annotations:
     apigateway.ingress.kubernetes.io/client-arns: arn:aws:iam::xxx:user/xxx
+    apigateway.ingress.kubernetes.io/aws-api-configs: '[]'
     apigateway.ingress.kubernetes.io/stage-name: prod
     apigateway.ingress.kubernetes.io/apigw-endpoint-type: REGIONAL
     kubernetes.io/ingress.class: apigateway
