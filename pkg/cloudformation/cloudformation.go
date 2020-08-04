@@ -55,6 +55,7 @@ const (
 	OutputKeyCustomDomain                   = "CustomDomainName"
 	OutputKeyCustomDomainBasePath           = "CustomDomainBasePath"
 	OutputMinimumCompressionSize            = "MinimumCompressionSize"
+	OutputKeyIngressRules                   = "IngressRules"
 	OutputKeyWAFEnabled                     = "WAFEnabled"
 	OutputKeyWAFRules                       = "WAFRules"
 	OutputKeyWAFScope                       = "WAFScope"
@@ -96,7 +97,7 @@ func mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(resources []APIResource, r
 			if idx == 0 {
 				continue
 			}
-			ref := cfn.GetAtt(fmt.Sprintf("%s%d", APIResourceName, index), fmt.Sprintf("%s%d", APIRootResourceResourceID, index))
+			ref := cfn.GetAtt(fmt.Sprintf("%s%d", APIResourceName, index), APIRootResourceResourceID)
 			if idx > 1 {
 				ref = cfn.Ref(fmt.Sprintf("%s%s%d", APIResourceResourceName, toLogicalName(idx-1, parts), index))
 			}
@@ -124,7 +125,7 @@ func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIng
 			if idx == 0 {
 				continue
 			}
-			ref := cfn.GetAtt(fmt.Sprintf("%s%d", APIResourceName, index), fmt.Sprintf("%s%d", APIRootResourceResourceID, index))
+			ref := cfn.GetAtt(fmt.Sprintf("%s%d", APIResourceName, index), APIRootResourceResourceID)
 			if idx > 1 {
 				ref = cfn.Ref(fmt.Sprintf("%s%s%d", APIResourceResourceName, toLogicalName(idx-1, parts), index))
 			}
@@ -260,10 +261,10 @@ func buildAWSWAFWebACL(webACLScope string, rules string) *wafv2.WebACL {
 func buildAWSWAFWebACLAssociation(stage string, index int) *wafv2.WebACLAssociation {
 	wafAssociation := &wafv2.WebACLAssociation{
 		WebACLArn:   cfn.GetAtt(WAFACLResourceName, "Arn"),
-		ResourceArn: cfn.Sub(fmt.Sprintf("arn:aws:apigateway:${%s}::/restapis/${%s}/stages/%s", AWSRegion, APIResourceName, stage)),
+		ResourceArn: cfn.Sub(fmt.Sprintf("arn:aws:apigateway:${%s}::/restapis/${%s%d}/stages/%s", AWSRegion, APIResourceName, index, stage)),
 	}
 
-	dependsOn := []string{fmt.Sprintf("%s%d", DeploymentResourceName, index), fmt.Sprintf("%s%d", WAFACLResourceName, index)}
+	dependsOn := []string{fmt.Sprintf("%s%d", DeploymentResourceName, index), WAFACLResourceName}
 	sort.Strings(dependsOn)
 	wafAssociation.AWSCloudFormationDependsOn = dependsOn
 
@@ -477,13 +478,13 @@ func buildCustomDomainBasePathMapping(domainName string, stageName string, baseP
 	} else {
 		r = &apigateway.BasePathMapping{
 			DomainName: domainName,
-			RestApiId:  cfn.Ref(APIResourceName),
+			RestApiId:  cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
 			Stage:      stageName,
 			BasePath:   basePath,
 		}
 	}
 
-	r.AWSCloudFormationDependsOn = []string{DeploymentResourceName}
+	r.AWSCloudFormationDependsOn = []string{fmt.Sprintf("%s%d", DeploymentResourceName, index)}
 	return r
 }
 
@@ -515,9 +516,9 @@ func buildUsagePlanAPIKeyMapping(usagePlan UsagePlan, i int, index int) []*apiga
 	arr := make([]*apigateway.UsagePlanKey, len(usagePlan.APIKeys))
 	for k, _ := range usagePlan.APIKeys {
 		arr[k] = &apigateway.UsagePlanKey{
-			KeyId:       cfn.Ref(fmt.Sprintf("%s%d%d", fmt.Sprintf("%s%d", APIKeyResourceName, index), i, k)),
+			KeyId:       cfn.Ref(fmt.Sprintf("%s%d%d%d", APIKeyResourceName, i, k, index)),
 			KeyType:     "API_KEY",
-			UsagePlanId: cfn.Ref(fmt.Sprintf("%s%d", UsagePlanResourceName, i)),
+			UsagePlanId: cfn.Ref(fmt.Sprintf("%s%d%d", UsagePlanResourceName, i, index)),
 		}
 	}
 	return arr
@@ -556,7 +557,7 @@ func buildUsagePlan(usagePlan UsagePlan, stage string, index int) *apigateway.Us
 
 	r.ApiStages = buildMethodThrottling(usagePlan.MethodThrottlingParameters, stage, index)
 
-	r.AWSCloudFormationDependsOn = []string{DeploymentResourceName}
+	r.AWSCloudFormationDependsOn = []string{fmt.Sprintf("%s%d", DeploymentResourceName, index)}
 
 	return r
 }
@@ -569,9 +570,9 @@ func buildLambdaExecutionRole() *iam.Role {
 		ManagedPolicyArns: []string{
 			"arn:aws:iam::aws:policy/service-role/AWSLambdaRole",
 		},
-		AssumeRolePolicyDocument: PolicyDocument{
+		AssumeRolePolicyDocument: AssumePolicyDocument{
 			Version: "2012-10-17",
-			Statement: []Statement{
+			Statement: []AssumeStatement{
 				{
 					Effect: "Allow",
 					Principal: map[string][]string{
@@ -810,7 +811,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 						for k, key := range keyArr {
 							template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyResourceName, j, k, i)] = key
 						}
-						template.Resources[fmt.Sprintf("%s%d", UsagePlanResourceName, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
+						template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
 						mapArr := buildUsagePlanAPIKeyMapping(usagePlan, j, i)
 						for k, key := range mapArr {
 							template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyUsagePlanResourceName, j, k, i)] = key
@@ -822,7 +823,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 						for k, key := range keyArr {
 							template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyResourceName, j, k, i)] = key
 						}
-						template.Resources[fmt.Sprintf("%s%d", UsagePlanResourceName, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
+						template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
 						mapArr := buildUsagePlanAPIKeyMapping(usagePlan, j, i)
 						for k, key := range mapArr {
 							template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyUsagePlanResourceName, j, k, i)] = key
@@ -836,7 +837,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 				for k, key := range keyArr {
 					template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyResourceName, j, k, i)] = key
 				}
-				template.Resources[fmt.Sprintf("%s%d", UsagePlanResourceName, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
+				template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
 				mapArr := buildUsagePlanAPIKeyMapping(usagePlan, j, i)
 				for k, key := range mapArr {
 					template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyUsagePlanResourceName, j, k, i)] = key
@@ -852,9 +853,18 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	vPCLink := buildAWSApiGatewayVpcLink([]string{LoadBalancerResourceName})
 	template.Resources[VPCLinkResourceName] = vPCLink
 
+	rulePaths, err := json.Marshal(cfg.Rule.IngressRuleValue.HTTP.Paths)
+	var rulePathsStr string
+	if err != nil {
+		rulePathsStr = ""
+	} else {
+		rulePathsStr = string(rulePaths)
+	}
+
 	template.Outputs = map[string]interface{}{
 		OutputKeyAPIEndpointType: Output{Value: cfg.APIEndpointType},
 		OutputKeyRequestTimeout:  Output{Value: fmt.Sprintf("%d", cfg.RequestTimeout)},
+		OutputKeyIngressRules:    Output{Value: rulePathsStr},
 	}
 
 	for i := 0; i < apiSize; i++ {

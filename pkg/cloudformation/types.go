@@ -11,6 +11,17 @@ type Statement struct {
 	Resource  []string            `json:"Resource"`
 }
 
+type AssumeStatement struct {
+	Effect    string              `json:"Effect"`
+	Principal map[string][]string `json:"Principal"`
+	Action    []string            `json:"Action"`
+}
+
+type AssumePolicyDocument struct {
+	Version   string            `json:"Version"`
+	Statement []AssumeStatement `json:"Statement"`
+}
+
 type PolicyDocument struct {
 	Version   string      `json:"Version"`
 	Statement []Statement `json:"Statement"`

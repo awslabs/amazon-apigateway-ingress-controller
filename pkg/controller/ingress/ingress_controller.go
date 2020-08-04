@@ -17,6 +17,7 @@ package ingress
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"reflect"
@@ -325,18 +326,32 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	outputs := cfn.StackOutputMap(stack)
 
 	// Deploy API so changes are applied after Update
-	r.log.Info("creating apigateway deployment", zap.String(cfn.OutputKeyRestAPIID, outputs[cfn.OutputKeyRestAPIID]), zap.String("stage", getStageName(instance)))
-	if _, err := r.apigatewaySvc.CreateDeployment(&apigateway.CreateDeploymentInput{
-		RestApiId: aws.String(outputs[cfn.OutputKeyRestAPIID]),
-		StageName: aws.String(getStageName(instance)),
-	}); err != nil {
-		r.log.Error("unable to deploy ApiGateway Rest API", zap.Error(err))
-		return reconcile.Result{}, err
+	awsAPIConfigStr := cfn.StackOutputMap(stack)[cfn.OutputKeyAWSAPIConfigs]
+	var configArr []cfn.AWSAPIDefinition
+	if awsAPIConfigStr == "" {
+		configArr = []cfn.AWSAPIDefinition{cfn.AWSAPIDefinition{}}
+	} else {
+		err := json.Unmarshal([]byte(awsAPIConfigStr), &configArr)
+		if err != nil {
+			configArr = []cfn.AWSAPIDefinition{cfn.AWSAPIDefinition{}}
+		}
+	}
+	apiSize := len(configArr)
+
+	for i := 0; i < apiSize; i++ {
+		r.log.Info("creating apigateway deployment", zap.String(fmt.Sprintf("%s%d", cfn.OutputKeyRestAPIID, i), outputs[fmt.Sprintf("%s%d", cfn.OutputKeyRestAPIID, i)]), zap.String("stage", getStageName(instance)))
+		if _, err := r.apigatewaySvc.CreateDeployment(&apigateway.CreateDeploymentInput{
+			RestApiId: aws.String(outputs[fmt.Sprintf("%s%d", cfn.OutputKeyRestAPIID, i)]),
+			StageName: aws.String(getStageName(instance)),
+		}); err != nil {
+			r.log.Error("unable to deploy ApiGateway Rest API", zap.Error(err))
+			return reconcile.Result{}, err
+		}
 	}
 
-	u, err := url.Parse(outputs[cfn.OutputKeyAPIGatewayEndpoint])
+	u, err := url.Parse(outputs[fmt.Sprintf("%s%d", cfn.OutputKeyAPIGatewayEndpoint, 0)])
 	if err != nil {
-		r.log.Error("unable to parse url from stack output", zap.Error(err), zap.String("output", outputs[cfn.OutputKeyAPIGatewayEndpoint]))
+		r.log.Error("unable to parse url from stack output", zap.Error(err), zap.String("output", fmt.Sprintf("%s%d", cfn.OutputKeyAPIGatewayEndpoint, 0)))
 		return reconcile.Result{}, err
 	}
 
@@ -695,7 +710,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 	if _, err := r.cfnSvc.CreateStack(&cloudformation.CreateStackInput{
 		TemplateBody: aws.String(string(b)),
 		StackName:    aws.String(instance.GetObjectMeta().GetName()),
-		Capabilities: aws.StringSlice([]string{"CAPABILITY_IAM"}),
+		Capabilities: aws.StringSlice([]string{"CAPABILITY_NAMED_IAM"}),
 		Tags: []*cloudformation.Tag{
 			{
 				Key:   aws.String("managedBy"),
@@ -762,7 +777,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cl
 	if _, err := r.cfnSvc.UpdateStack(&cloudformation.UpdateStackInput{
 		TemplateBody: aws.String(string(b)),
 		StackName:    aws.String(instance.GetObjectMeta().GetName()),
-		Capabilities: aws.StringSlice([]string{"CAPABILITY_IAM"}),
+		Capabilities: aws.StringSlice([]string{"CAPABILITY_NAMED_IAM"}),
 		Tags: []*cloudformation.Tag{
 			{
 				Key:   aws.String("managedBy"),

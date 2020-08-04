@@ -175,7 +175,12 @@ func getStageName(ingress *extensionsv1beta1.Ingress) string {
 }
 
 func getArns(ingress *extensionsv1beta1.Ingress) []string {
-	return strings.Split(ingress.ObjectMeta.Annotations[IngressAnnotationClientArns], ",")
+	arns := ingress.ObjectMeta.Annotations[IngressAnnotationClientArns]
+	if arns == "" {
+		return []string{}
+	} else {
+		return strings.Split(arns, ",")
+	}
 }
 
 func getNginxImage(ingress *extensionsv1beta1.Ingress) string {
@@ -385,11 +390,26 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		return true
 	}
 
-	if checkProxyPaths(stack, instance, apigw) {
+	if apiResources == nil && outAPIResourcesStr == "" && checkProxyPaths(stack, instance, apigw) {
 		r.log.Info("Rules are not matching, Should Update")
 		return true
 	} else {
 		r.log.Debug("Rules are matching, Should Update not triggered.")
+	}
+
+	rulePaths, err := json.Marshal(instance.Spec.Rules[0].HTTP.Paths)
+	var rulePathsStr string
+	if err != nil {
+		rulePathsStr = ""
+	} else {
+		rulePathsStr = string(rulePaths)
+	}
+
+	if (apiResources != nil || outAPIResourcesStr != "") && rulePathsStr != cfn.StackOutputMap(stack)[cfn.OutputKeyIngressRules] {
+		r.log.Info("Rules in Outputs are not matching, Should Update")
+		return true
+	} else {
+		r.log.Debug("Rules in Outputs are matching, Should Update not triggered.")
 	}
 
 	if getGWCacheEnabled(instance) && cfn.StackOutputMap(stack)[cfn.OutputKeyCachingEnabled] != fmt.Sprintf("%t", getGWCacheEnabled(instance)) {
