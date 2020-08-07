@@ -166,20 +166,44 @@ func getAPIResources() []APIResource {
 	}
 }
 
-func getAPIDef() AWSAPIDefinition {
-	return AWSAPIDefinition{
-		Name:                         "api0",
-		Context:                      "api0",
+func getAuthDef() AWSAPIAuthorizer {
+	return AWSAPIAuthorizer{
 		IdentitySource:               "foo",
 		AuthorizerType:               "REQUEST",
 		AuthorizerAuthType:           "foo",
 		AuthorizerName:               "foo",
 		IdentityValidationExpression: "",
 		AuthorizerUri:                "arn:bar",
-		AuthenticationEnabled:        true,
-		APIKeyEnabled:                true,
-		Authorization_Enabled:        true,
-		UsagePlans:                   getSecondUsagePlans(),
+	}
+}
+
+func getAuthDefPointer() *AWSAPIAuthorizer {
+	return &AWSAPIAuthorizer{
+		IdentitySource:               "foo",
+		AuthorizerType:               "REQUEST",
+		AuthorizerAuthType:           "foo",
+		AuthorizerName:               "foo",
+		IdentityValidationExpression: "",
+		AuthorizerUri:                "arn:bar",
+	}
+}
+
+func getAuthDefs() []AWSAPIAuthorizer {
+	return []AWSAPIAuthorizer{
+		getAuthDef(),
+	}
+}
+
+func getAPIDef() AWSAPIDefinition {
+	return AWSAPIDefinition{
+		Name:                  "api0",
+		Context:               "api0",
+		AuthenticationEnabled: true,
+		APIKeyEnabled:         true,
+		Authorization_Enabled: true,
+		Authorizers:           getAuthDefs(),
+		UsagePlans:            getSecondUsagePlans(),
+		APIs:                  getAPIResources(),
 	}
 }
 
@@ -195,10 +219,8 @@ func getAWSAPIDefBytes() string {
 	return string(awsDefsBytes)
 }
 
-func getAPIDefWOUsagePlans() AWSAPIDefinition {
-	return AWSAPIDefinition{
-		Name:                         "api1",
-		Context:                      "api1",
+func getAuthDefCognito() AWSAPIAuthorizer {
+	return AWSAPIAuthorizer{
 		IdentitySource:               "foo",
 		AuthorizerType:               "COGNITO_USER_POOLS",
 		AuthorizerAuthType:           "foo",
@@ -209,16 +231,11 @@ func getAPIDefWOUsagePlans() AWSAPIDefinition {
 		ProviderARNs: []string{
 			"arn:foo",
 		},
-		AuthenticationEnabled: true,
-		APIKeyEnabled:         true,
-		Authorization_Enabled: true,
 	}
 }
 
-func getAPIDefAPIKeyDisabled() AWSAPIDefinition {
-	return AWSAPIDefinition{
-		Name:                         "api2",
-		Context:                      "api2",
+func getAuthDefToken() AWSAPIAuthorizer {
+	return AWSAPIAuthorizer{
 		IdentitySource:               "foo",
 		AuthorizerType:               "TOKEN",
 		AuthorizerAuthType:           "foo",
@@ -229,6 +246,63 @@ func getAPIDefAPIKeyDisabled() AWSAPIDefinition {
 		ProviderARNs: []string{
 			"arn:foo",
 		},
+	}
+}
+
+func getAuthDefRequest() AWSAPIAuthorizer {
+	return AWSAPIAuthorizer{
+		IdentitySource:               "foo",
+		AuthorizerType:               "TOKEN",
+		AuthorizerAuthType:           "foo",
+		AuthorizerName:               "foo",
+		IdentityValidationExpression: "",
+		AuthorizerResultTtlInSeconds: 3600,
+		AuthorizerUri:                "arn:bar",
+		ProviderARNs: []string{
+			"arn:foo",
+		},
+	}
+}
+
+func getAuthDefCognitoPointer() *AWSAPIAuthorizer {
+	return &AWSAPIAuthorizer{
+		IdentitySource:               "foo",
+		AuthorizerType:               "COGNITO_USER_POOLS",
+		AuthorizerAuthType:           "foo",
+		AuthorizerName:               "foo",
+		IdentityValidationExpression: "",
+		AuthorizerResultTtlInSeconds: 3600,
+		AuthorizerUri:                "arn:bar",
+		ProviderARNs: []string{
+			"arn:foo",
+		},
+	}
+}
+
+func getAuthDefs2() []AWSAPIAuthorizer {
+	return []AWSAPIAuthorizer{
+		getAuthDefCognito(),
+		getAuthDefToken(),
+		getAuthDefRequest(),
+	}
+}
+
+func getAPIDefWOUsagePlans() AWSAPIDefinition {
+	return AWSAPIDefinition{
+		Name:                  "api1",
+		Context:               "api1",
+		Authorizers:           getAuthDefs2(),
+		AuthenticationEnabled: true,
+		APIKeyEnabled:         true,
+		Authorization_Enabled: true,
+	}
+}
+
+func getAPIDefAPIKeyDisabled() AWSAPIDefinition {
+	return AWSAPIDefinition{
+		Name:                  "api2",
+		Context:               "api2",
+		Authorizers:           getAuthDefs2(),
 		AuthenticationEnabled: true,
 		APIKeyEnabled:         false,
 		Authorization_Enabled: true,
@@ -237,18 +311,9 @@ func getAPIDefAPIKeyDisabled() AWSAPIDefinition {
 
 func getAPIDefAuthDisabled() AWSAPIDefinition {
 	return AWSAPIDefinition{
-		Name:                         "api3",
-		Context:                      "api3",
-		IdentitySource:               "foo",
-		AuthorizerType:               "REQUEST",
-		AuthorizerAuthType:           "foo",
-		AuthorizerName:               "foo",
-		IdentityValidationExpression: "",
-		AuthorizerResultTtlInSeconds: 3600,
-		AuthorizerUri:                "arn:bar",
-		ProviderARNs: []string{
-			"arn:foo",
-		},
+		Name:                  "api3",
+		Context:               "api3",
+		Authorizers:           getAuthDefs2(),
 		AuthenticationEnabled: false,
 		APIKeyEnabled:         false,
 		Authorization_Enabled: true,
@@ -257,18 +322,9 @@ func getAPIDefAuthDisabled() AWSAPIDefinition {
 
 func getAPIDefAuthorizationDisabled() AWSAPIDefinition {
 	return AWSAPIDefinition{
-		Name:                         "api4",
-		Context:                      "api4",
-		IdentitySource:               "foo",
-		AuthorizerType:               "REQUEST",
-		AuthorizerAuthType:           "foo",
-		AuthorizerName:               "foo",
-		IdentityValidationExpression: "",
-		AuthorizerResultTtlInSeconds: 3600,
-		AuthorizerUri:                "arn:bar",
-		ProviderARNs: []string{
-			"arn:foo",
-		},
+		Name:                  "api4",
+		Context:               "api4",
+		Authorizers:           getAuthDefs2(),
 		AuthenticationEnabled: false,
 		APIKeyEnabled:         false,
 		Authorization_Enabled: false,
@@ -293,9 +349,19 @@ func getAWSAPIDefWOUsagePlansBytes() string {
 func getAPIResource() APIResource {
 	return APIResource{
 		Path: "/api/v1/foobar",
-		Methods: []string{
-			"GET",
-			"POST",
+		Methods: []Method{
+			{
+				Method:                "GET",
+				APIKeyEnabled:         true,
+				Authorization_Enabled: true,
+				Authorizator_Index:    0,
+			},
+			{
+				Method:                "POST",
+				APIKeyEnabled:         false,
+				Authorization_Enabled: false,
+				Authorizator_Index:    0,
+			},
 		},
 		CachingEnabled: false,
 		ProxyPathParams: []Param{
@@ -394,10 +460,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
-					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -457,10 +523,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
-					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -521,10 +587,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
-					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
-					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
+					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true),
+					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true),
+					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true),
+					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true),
 					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -590,10 +656,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
-					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
-					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
+					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true),
+					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true),
+					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true),
+					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true),
 					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -661,10 +727,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
-					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -734,10 +800,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
-					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -805,10 +871,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
-					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -877,10 +943,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
-					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -948,10 +1014,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
-					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -1022,10 +1088,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
-					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -1096,10 +1162,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
-					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -1172,10 +1238,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
-					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -1254,10 +1320,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
-					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -1336,10 +1402,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
-					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
+					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false),
 					"Resourceapi0":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -1414,8 +1480,8 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":       buildLambdaExecutionRole(),
-					"Methodapiv1foobarGET0":  buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0),
-					"Methodapiv1foobarPOST0": buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0),
+					"Methodapiv1foobarGET0":  buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0, nil, 0, true),
+					"Methodapiv1foobarPOST0": buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0, nil, 0, false),
 					"Resourceapi0":           buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":         buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":   buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -1477,8 +1543,8 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":       buildLambdaExecutionRole(),
-					"Methodapiv1foobarGET0":  buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0),
-					"Methodapiv1foobarPOST0": buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0),
+					"Methodapiv1foobarGET0":  buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0, nil, 0, true),
+					"Methodapiv1foobarPOST0": buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0, nil, 0, false),
 					"Resourceapi0":           buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":         buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":   buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -1542,8 +1608,8 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":       buildLambdaExecutionRole(),
-					"Methodapiv1foobarGET0":  buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0),
-					"Methodapiv1foobarPOST0": buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0),
+					"Methodapiv1foobarGET0":  buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0, nil, 0, true),
+					"Methodapiv1foobarPOST0": buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0, nil, 0, false),
 					"Resourceapi0":           buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":         buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":   buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
@@ -1608,19 +1674,16 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
-					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":           buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":      buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0),
+					"Methodapiv1foobarGET0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0, getAuthDefPointer(), 0, true),
+					"Methodapiv1foobarPOST0":       buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0, nil, 0, false),
 					"Resourceapi0":                 buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapiv10":               buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
 					"Resourceapiv1foobar0":         buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
-					"Resourceapiv1foobarproxy0":    buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar0"), "{proxy+}", 0),
 					"TargetGroup":                  buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
 					"Listener":                     buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":        buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
 					"RestAPI0":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0, "api0"),
-					"Deployment0":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapi0", "Methodapiv10", "Methodapiv1foobar0", "Methodapiv1foobarproxy0"}, false, nil, "", 0),
+					"Deployment0":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapiv1foobarGET0", "Methodapiv1foobarPOST0"}, false, nil, "", 0),
 					"LoadBalancer":                 buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                      buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"APIKeyUsagePlan000":           getSecondAPIKeyMappingBuild(0, 0, 0),
@@ -1628,7 +1691,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"UsagePlan00":                  buildUsagePlan(getSecondUsagePlan(), "baz", 0),
 					"APIKey000":                    getSecondAPIKeyBuild(0),
 					"APIKey010":                    getSecondAPIKeyBuild(1),
-					"RestAPIAuthorizer0":           buildAuthorizer(getAPIDef(), 0),
+					"RestAPIAuthorizer00":          buildAuthorizer(getAuthDef(), 0),
 					"CustomDomain":                 buildCustomDomain("example.com", "arn::foobar", "EDGE", "TLS_1_2"),
 					"CustomDomainBasePathMapping0": buildCustomDomainBasePathMapping("example.com", "baz", "api0", 0),
 				},
@@ -1687,22 +1750,22 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			want: &cfn.Template{
 				Resources: cfn.Resources{
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
-					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
-					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
-					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
-					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0),
-					"Methodapi1":                buildAWSApiGatewayMethod("Resourceapi1", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1),
-					"Methodapiv11":              buildAWSApiGatewayMethod("Resourceapiv11", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1),
-					"Methodapiv1foobar1":        buildAWSApiGatewayMethod("Resourceapiv1foobar1", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1),
-					"Methodapiv1foobarproxy1":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy1", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1),
-					"Methodapi2":                buildAWSApiGatewayMethod("Resourceapi2", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2),
-					"Methodapiv12":              buildAWSApiGatewayMethod("Resourceapiv12", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2),
-					"Methodapiv1foobar2":        buildAWSApiGatewayMethod("Resourceapiv1foobar2", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2),
-					"Methodapiv1foobarproxy2":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy2", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2),
-					"Methodapi3":                buildAWSApiGatewayMethod("Resourceapi3", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3),
-					"Methodapiv13":              buildAWSApiGatewayMethod("Resourceapiv13", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3),
-					"Methodapiv1foobar3":        buildAWSApiGatewayMethod("Resourceapiv1foobar3", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3),
-					"Methodapiv1foobarproxy3":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy3", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3),
+					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true),
+					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true),
+					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true),
+					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true),
+					"Methodapi1":                buildAWSApiGatewayMethod("Resourceapi1", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1, getAuthDefCognitoPointer(), 0, false),
+					"Methodapiv11":              buildAWSApiGatewayMethod("Resourceapiv11", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1, getAuthDefCognitoPointer(), 0, false),
+					"Methodapiv1foobar1":        buildAWSApiGatewayMethod("Resourceapiv1foobar1", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1, getAuthDefCognitoPointer(), 0, false),
+					"Methodapiv1foobarproxy1":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy1", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1, getAuthDefCognitoPointer(), 0, false),
+					"Methodapi2":                buildAWSApiGatewayMethod("Resourceapi2", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2, getAuthDefCognitoPointer(), 0, false),
+					"Methodapiv12":              buildAWSApiGatewayMethod("Resourceapiv12", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2, getAuthDefCognitoPointer(), 0, false),
+					"Methodapiv1foobar2":        buildAWSApiGatewayMethod("Resourceapiv1foobar2", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2, getAuthDefCognitoPointer(), 0, false),
+					"Methodapiv1foobarproxy2":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy2", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2, getAuthDefCognitoPointer(), 0, false),
+					"Methodapi3":                buildAWSApiGatewayMethod("Resourceapi3", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3, getAuthDefCognitoPointer(), 0, false),
+					"Methodapiv13":              buildAWSApiGatewayMethod("Resourceapiv13", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3, getAuthDefCognitoPointer(), 0, false),
+					"Methodapiv1foobar3":        buildAWSApiGatewayMethod("Resourceapiv1foobar3", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3, getAuthDefCognitoPointer(), 0, false),
+					"Methodapiv1foobarproxy3":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy3", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3, getAuthDefCognitoPointer(), 0, false),
 					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
 					"Resourceapi1":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI1", "RootResourceId"), "api", 1),
 					"Resourceapi2":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI2", "RootResourceId"), "api", 2),
@@ -1737,9 +1800,15 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"UsagePlan00":               buildUsagePlan(getUsagePlan(), "baz", 0),
 					"APIKey000":                 getAPIKeyBuild(0),
 					"APIKey010":                 getAPIKeyBuild(1),
-					"RestAPIAuthorizer0":        buildAuthorizer(getAPIDefWOUsagePlans(), 0),
-					"RestAPIAuthorizer1":        buildAuthorizer(getAPIDefAPIKeyDisabled(), 1),
-					"RestAPIAuthorizer2":        buildAuthorizer(getAPIDefAuthDisabled(), 2),
+					"RestAPIAuthorizer00":       buildAuthorizer(getAuthDefCognito(), 0),
+					"RestAPIAuthorizer01":       buildAuthorizer(getAuthDefToken(), 0),
+					"RestAPIAuthorizer02":       buildAuthorizer(getAuthDefRequest(), 0),
+					"RestAPIAuthorizer10":       buildAuthorizer(getAuthDefCognito(), 1),
+					"RestAPIAuthorizer11":       buildAuthorizer(getAuthDefToken(), 1),
+					"RestAPIAuthorizer12":       buildAuthorizer(getAuthDefRequest(), 1),
+					"RestAPIAuthorizer20":       buildAuthorizer(getAuthDefCognito(), 2),
+					"RestAPIAuthorizer21":       buildAuthorizer(getAuthDefToken(), 2),
+					"RestAPIAuthorizer22":       buildAuthorizer(getAuthDefRequest(), 2),
 				},
 				Outputs: map[string]interface{}{
 					"RestAPIID0":             Output{Value: cfn.Ref("RestAPI0")},

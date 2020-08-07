@@ -88,7 +88,7 @@ func toPath(idx int, parts []string) string {
 	return strings.Join(parts[:idx+1], "/")
 }
 
-func mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(resources []APIResource, requestTimeout int, authorizationType string, index int) map[string]cfn.Resource {
+func mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(resources []APIResource, requestTimeout int, authorizationType string, index int, authorizers []AWSAPIAuthorizer) map[string]cfn.Resource {
 	m := map[string]cfn.Resource{}
 
 	for _, resource := range resources {
@@ -106,7 +106,11 @@ func mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(resources []APIResource, r
 			m[resourceLogicalName] = buildAWSApiGatewayResource(ref, part, index)
 			if idx == len(parts)-1 {
 				for _, method := range resource.Methods {
-					m[fmt.Sprintf("%s%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), method, index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, method, resource, index)
+					if method.Authorization_Enabled && authorizers != nil {
+						m[fmt.Sprintf("%s%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), method.Method, index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, method.Method, resource, index, &authorizers[method.Authorizator_Index], method.Authorizator_Index, method.APIKeyEnabled)
+					} else {
+						m[fmt.Sprintf("%s%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), method.Method, index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, method.Method, resource, index, nil, 0, method.APIKeyEnabled)
+					}
 				}
 			}
 		}
@@ -115,7 +119,7 @@ func mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(resources []APIResource, r
 	return m
 }
 
-func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIngressPath, requestTimeout int, authorizationType string, index int) map[string]cfn.Resource {
+func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIngressPath, requestTimeout int, authorizationType string, index int, authorizers []AWSAPIAuthorizer, apiKeyEnabled bool) map[string]cfn.Resource {
 	m := map[string]cfn.Resource{}
 
 	for _, path := range paths {
@@ -132,7 +136,11 @@ func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIng
 
 			resourceLogicalName := fmt.Sprintf("%s%s%d", APIResourceResourceName, toLogicalName(idx, parts), index)
 			m[resourceLogicalName] = buildAWSApiGatewayResource(ref, part, index)
-			m[fmt.Sprintf("%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, "ANY", APIResource{}, index)
+			if authorizers != nil {
+				m[fmt.Sprintf("%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, "ANY", APIResource{}, index, &authorizers[0], 0, apiKeyEnabled)
+			} else {
+				m[fmt.Sprintf("%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, "ANY", APIResource{}, index, nil, 0, apiKeyEnabled)
+			}
 		}
 	}
 
@@ -284,7 +292,7 @@ func buildAWSAPIGWDeploymentMethodSettings(cachingEnabled bool, apiResources []A
 			for j, method := range resource.Methods {
 				methodSetting := apigateway.Deployment_MethodSetting{
 					ResourcePath:   buildResourcePath(resource.Path),
-					HttpMethod:     method,
+					HttpMethod:     method.Method,
 					CachingEnabled: resource.CachingEnabled,
 				}
 				if i == 0 && j == 0 {
@@ -388,15 +396,7 @@ func buildAWSApiGatewayVpcLink(dependsOn []string) *apigateway.VpcLink {
 	return r
 }
 
-func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, authorizationType string, method string, resource APIResource, index int) *apigateway.Method {
-	var apiKeyRequired bool
-
-	if authorizationType == "AWS_IAM" {
-		apiKeyRequired = false
-	} else {
-		apiKeyRequired = true
-	}
-
+func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, authorizationType string, method string, resource APIResource, index int, authorizer *AWSAPIAuthorizer, authorizerIndex int, apiKeyRequired bool) *apigateway.Method {
 	requestParams := make(map[string]bool)
 	requestParams["method.request.path.proxy"] = true
 	integrationRequestParams := make(map[string]string)
@@ -429,23 +429,51 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		}
 	}
 
-	m := &apigateway.Method{
-		RequestParameters: requestParams,
-		AuthorizationType: authorizationType,
-		ApiKeyRequired:    apiKeyRequired,
-		HttpMethod:        method,
-		ResourceId:        cfn.Ref(resourceLogicalName),
-		RestApiId:         cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
-		Integration: &apigateway.Method_Integration{
-			ConnectionId:          cfn.Ref(VPCLinkResourceName),
-			ConnectionType:        "VPC_LINK",
-			IntegrationHttpMethod: "ANY",
-			PassthroughBehavior:   "WHEN_NO_MATCH",
-			RequestParameters:     integrationRequestParams,
-			Type:                  "HTTP_PROXY",
-			TimeoutInMillis:       timeout,
-			Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
-		},
+	if authorizationType == "TOKEN" || authorizationType == "REQUEST" {
+		authorizationType = "CUSTOM"
+	}
+
+	var m *apigateway.Method
+
+	if authorizer != nil {
+		m = &apigateway.Method{
+			RequestParameters: requestParams,
+			AuthorizationType: authorizer.AuthorizerType,
+			ApiKeyRequired:    apiKeyRequired,
+			AuthorizerId:      cfn.Ref(fmt.Sprintf("%s%d%d", APIAuthorizerResourceName, index, authorizerIndex)),
+			HttpMethod:        method,
+			ResourceId:        cfn.Ref(resourceLogicalName),
+			RestApiId:         cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
+			Integration: &apigateway.Method_Integration{
+				ConnectionId:          cfn.Ref(VPCLinkResourceName),
+				ConnectionType:        "VPC_LINK",
+				IntegrationHttpMethod: "ANY",
+				PassthroughBehavior:   "WHEN_NO_MATCH",
+				RequestParameters:     integrationRequestParams,
+				Type:                  "HTTP_PROXY",
+				TimeoutInMillis:       timeout,
+				Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
+			},
+		}
+	} else {
+		m = &apigateway.Method{
+			RequestParameters: requestParams,
+			AuthorizationType: authorizationType,
+			ApiKeyRequired:    apiKeyRequired,
+			HttpMethod:        method,
+			ResourceId:        cfn.Ref(resourceLogicalName),
+			RestApiId:         cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
+			Integration: &apigateway.Method_Integration{
+				ConnectionId:          cfn.Ref(VPCLinkResourceName),
+				ConnectionType:        "VPC_LINK",
+				IntegrationHttpMethod: "ANY",
+				PassthroughBehavior:   "WHEN_NO_MATCH",
+				RequestParameters:     integrationRequestParams,
+				Type:                  "HTTP_PROXY",
+				TimeoutInMillis:       timeout,
+				Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
+			},
+		}
 	}
 
 	m.AWSCloudFormationDependsOn = []string{LoadBalancerResourceName}
@@ -592,43 +620,43 @@ func buildLambdaExecutionRole() *iam.Role {
 	return r
 }
 
-func buildAuthorizer(apiDef AWSAPIDefinition, index int) *apigateway.Authorizer {
-	if apiDef.AuthorizerResultTtlInSeconds == 0 {
-		apiDef.AuthorizerResultTtlInSeconds = 300
+func buildAuthorizer(apiAuthDef AWSAPIAuthorizer, index int) *apigateway.Authorizer {
+	if apiAuthDef.AuthorizerResultTtlInSeconds == 0 {
+		apiAuthDef.AuthorizerResultTtlInSeconds = 300
 	}
-	if apiDef.AuthorizerType == "COGNITO_USER_POOLS" {
+	if apiAuthDef.AuthorizerType == "COGNITO_USER_POOLS" {
 		return &apigateway.Authorizer{
-			AuthorizerResultTtlInSeconds: apiDef.AuthorizerResultTtlInSeconds,
-			AuthType:                     apiDef.AuthorizerAuthType,
-			IdentitySource:               apiDef.IdentitySource,
-			Name:                         apiDef.Name,
-			ProviderARNs:                 apiDef.ProviderARNs,
+			AuthorizerResultTtlInSeconds: apiAuthDef.AuthorizerResultTtlInSeconds,
+			AuthType:                     apiAuthDef.AuthorizerAuthType,
+			IdentitySource:               apiAuthDef.IdentitySource,
+			Name:                         apiAuthDef.AuthorizerName,
+			ProviderARNs:                 apiAuthDef.ProviderARNs,
 			RestApiId:                    cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
-			Type:                         apiDef.AuthorizerType,
+			Type:                         apiAuthDef.AuthorizerType,
 		}
-	} else if apiDef.AuthorizerType == "TOKEN" {
+	} else if apiAuthDef.AuthorizerType == "TOKEN" {
 		return &apigateway.Authorizer{
 			AuthorizerCredentials:        cfn.GetAtt(LambdaInvokeRoleResourceName, "Arn"),
-			AuthorizerResultTtlInSeconds: apiDef.AuthorizerResultTtlInSeconds,
-			AuthorizerUri:                cfn.Join("", []string{"arn:aws:apigateway:", cfn.Ref("AWS::Region"), ":lambda:path/2015-03-31/functions/", apiDef.AuthorizerUri, "/invocations"}),
-			AuthType:                     apiDef.AuthorizerAuthType,
-			IdentitySource:               apiDef.IdentitySource,
-			IdentityValidationExpression: apiDef.IdentityValidationExpression,
-			Name:                         apiDef.Name,
+			AuthorizerResultTtlInSeconds: apiAuthDef.AuthorizerResultTtlInSeconds,
+			AuthorizerUri:                cfn.Join("", []string{"arn:aws:apigateway:", cfn.Ref("AWS::Region"), ":lambda:path/2015-03-31/functions/", apiAuthDef.AuthorizerUri, "/invocations"}),
+			AuthType:                     apiAuthDef.AuthorizerAuthType,
+			IdentitySource:               apiAuthDef.IdentitySource,
+			IdentityValidationExpression: apiAuthDef.IdentityValidationExpression,
+			Name:                         apiAuthDef.AuthorizerName,
 			RestApiId:                    cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
-			Type:                         apiDef.AuthorizerType,
+			Type:                         apiAuthDef.AuthorizerType,
 		}
 	} else {
 		return &apigateway.Authorizer{
 			AuthorizerCredentials:        cfn.GetAtt(LambdaInvokeRoleResourceName, "Arn"),
-			AuthorizerResultTtlInSeconds: apiDef.AuthorizerResultTtlInSeconds,
-			AuthorizerUri:                cfn.Join("", []string{"arn:aws:apigateway:", cfn.Ref("AWS::Region"), ":lambda:path/2015-03-31/functions/", apiDef.AuthorizerUri, "/invocations"}),
-			AuthType:                     apiDef.AuthorizerAuthType,
-			IdentitySource:               apiDef.IdentitySource,
-			IdentityValidationExpression: apiDef.AuthorizerAuthType,
-			Name:                         apiDef.Name,
+			AuthorizerResultTtlInSeconds: apiAuthDef.AuthorizerResultTtlInSeconds,
+			AuthorizerUri:                cfn.Join("", []string{"arn:aws:apigateway:", cfn.Ref("AWS::Region"), ":lambda:path/2015-03-31/functions/", apiAuthDef.AuthorizerUri, "/invocations"}),
+			AuthType:                     apiAuthDef.AuthorizerAuthType,
+			IdentitySource:               apiAuthDef.IdentitySource,
+			IdentityValidationExpression: apiAuthDef.IdentityValidationExpression,
+			Name:                         apiAuthDef.AuthorizerName,
 			RestApiId:                    cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
-			Type:                         apiDef.AuthorizerType,
+			Type:                         apiAuthDef.AuthorizerType,
 		}
 	}
 }
@@ -753,10 +781,17 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 
 		methodLogicalNames := []string{}
 		var resourceMap map[string]cfn.Resource
-		if publicAPIs != nil && len(publicAPIs) > 0 {
-			resourceMap = mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(publicAPIs, cfg.RequestTimeout, authorizationType, i)
+		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && cfg.AWSAPIDefinitions[i].APIs != nil && len(cfg.AWSAPIDefinitions[i].APIs) > 0 {
+			resourceMap = mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(cfg.AWSAPIDefinitions[i].APIs, cfg.RequestTimeout, authorizationType, i, cfg.AWSAPIDefinitions[i].Authorizers)
+		} else if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && publicAPIs != nil && len(publicAPIs) > 0 {
+			resourceMap = mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(publicAPIs, cfg.RequestTimeout, authorizationType, i, cfg.AWSAPIDefinitions[i].Authorizers)
+		} else if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
+			resourceMap = mapApiGatewayMethodsAndResourcesFromPaths(paths, cfg.RequestTimeout, authorizationType, i, cfg.AWSAPIDefinitions[i].Authorizers, cfg.AWSAPIDefinitions[i].APIKeyEnabled)
+		} else if publicAPIs != nil && len(publicAPIs) > 0 {
+			resourceMap = mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(publicAPIs, cfg.RequestTimeout, authorizationType, i, nil)
 		} else {
-			resourceMap = mapApiGatewayMethodsAndResourcesFromPaths(paths, cfg.RequestTimeout, authorizationType, i)
+			enableAPIKeys := cfg.UsagePlans != nil && len(cfg.UsagePlans) > 0
+			resourceMap = mapApiGatewayMethodsAndResourcesFromPaths(paths, cfg.RequestTimeout, authorizationType, i, nil, enableAPIKeys)
 		}
 
 		for k, resource := range resourceMap {
@@ -778,9 +813,10 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		}
 
 		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && cfg.AWSAPIDefinitions[i].Authorization_Enabled {
-			//Authorizer Implementation
-			authorizer := buildAuthorizer(cfg.AWSAPIDefinitions[i], i)
-			template.Resources[fmt.Sprintf("%s%d", APIAuthorizerResourceName, i)] = authorizer
+			for l := 0; l < len(cfg.AWSAPIDefinitions[i].Authorizers); l++ {
+				authorizer := buildAuthorizer(cfg.AWSAPIDefinitions[i].Authorizers[l], i)
+				template.Resources[fmt.Sprintf("%s%d%d", APIAuthorizerResourceName, i, l)] = authorizer
+			}
 		}
 
 		deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources, cfg.CachingSize, i)

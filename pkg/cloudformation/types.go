@@ -66,27 +66,39 @@ type MethodThrottlingParametersObject struct {
 type APIResource struct {
 	Path              string   `json:"path"`
 	CachingEnabled    bool     `json:"caching_enabled"`
-	Methods           []string `json:"method"`
+	Methods           []Method `json:"method"`
 	ProxyPathParams   []Param  `json:"path_params"`
 	ProxyQueryParams  []Param  `json:"query_params"`
 	ProxyHeaderParams []Param  `json:"header_params"`
 }
 
+type Method struct {
+	Method                string `json:"method,omitempty"`
+	APIKeyEnabled         bool   `json:"api_key_enabled"`
+	Authorization_Enabled bool   `json:"authorization_enabled"`
+	Authorizator_Index    int    `json:"authorizator_index"`
+}
+
 type AWSAPIDefinition struct {
-	Name                         string      `json:"name,omitempty"`
-	Context                      string      `json:"context"`
-	IdentitySource               string      `json:"id_source"`
-	AuthorizerType               string      `json:"authorizer_type,omitempty"` //can be TOKEN, COGNITO_USER_POOLS or REQUEST
-	AuthorizerAuthType           string      `json:"authorizer_auth_type"`
-	AuthorizerName               string      `json:"authorizer_name"`
-	IdentityValidationExpression string      `json:"id_validation_exp"`
-	AuthorizerResultTtlInSeconds int         `json:"authorizer_result_ttl_secs"`
-	AuthorizerUri                string      `json:"lambda_arn"`
-	ProviderARNs                 []string    `json:"provider_arns"`
-	AuthenticationEnabled        bool        `json:"authentication_enabled"`
-	APIKeyEnabled                bool        `json:"api_key_enabled"`
-	Authorization_Enabled        bool        `json:"authorization_enabled"`
-	UsagePlans                   []UsagePlan `json:"usage_plans"`
+	Name                  string             `json:"name,omitempty"`
+	Context               string             `json:"context"`
+	AuthenticationEnabled bool               `json:"authentication_enabled"`
+	APIKeyEnabled         bool               `json:"api_key_enabled"`
+	Authorization_Enabled bool               `json:"authorization_enabled"`
+	UsagePlans            []UsagePlan        `json:"usage_plans"`
+	Authorizers           []AWSAPIAuthorizer `json:"authorizers"`
+	APIs                  []APIResource      `json:"apis"`
+}
+
+type AWSAPIAuthorizer struct {
+	IdentitySource               string   `json:"id_source"`
+	AuthorizerType               string   `json:"authorizer_type,omitempty"` //can be TOKEN, COGNITO_USER_POOLS or REQUEST
+	AuthorizerAuthType           string   `json:"authorizer_auth_type"`
+	AuthorizerName               string   `json:"authorizer_name"`
+	IdentityValidationExpression string   `json:"id_validation_exp"`
+	AuthorizerResultTtlInSeconds int      `json:"authorizer_result_ttl_secs"`
+	AuthorizerUri                string   `json:"lambda_arn"`
+	ProviderARNs                 []string `json:"provider_arns"`
 }
 
 type Param struct {
