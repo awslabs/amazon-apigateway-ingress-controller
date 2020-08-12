@@ -390,7 +390,7 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		return true
 	}
 
-	if apiResources == nil && outAPIResourcesStr == "" && checkProxyPaths(stack, instance, apigw) {
+	if awsAPIConfigs == nil && outAWSAPIConfigsStr == "" && apiResources == nil && outAPIResourcesStr == "" && checkProxyPaths(stack, instance, apigw) {
 		r.log.Info("Rules are not matching, Should Update")
 		return true
 	} else {
@@ -405,7 +405,7 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		rulePathsStr = string(rulePaths)
 	}
 
-	if (apiResources != nil || outAPIResourcesStr != "") && rulePathsStr != cfn.StackOutputMap(stack)[cfn.OutputKeyIngressRules] {
+	if ((awsAPIConfigs != nil || outAWSAPIConfigsStr != "") || (apiResources != nil || outAPIResourcesStr != "")) && rulePathsStr != cfn.StackOutputMap(stack)[cfn.OutputKeyIngressRules] {
 		r.log.Info("Rules in Outputs are not matching, Should Update")
 		return true
 	} else {

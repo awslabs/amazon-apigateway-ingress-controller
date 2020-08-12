@@ -107,9 +107,9 @@ func mapAPIGWMethodsAndResourcesFromDefinedPublicAPIs(resources []APIResource, r
 			if idx == len(parts)-1 {
 				for _, method := range resource.Methods {
 					if method.Authorization_Enabled && authorizers != nil {
-						m[fmt.Sprintf("%s%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), method.Method, index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, method.Method, resource, index, &authorizers[method.Authorizator_Index], method.Authorizator_Index, method.APIKeyEnabled)
+						m[fmt.Sprintf("%s%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), method.Method, index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, method.Method, resource, index, &authorizers[method.Authorizator_Index], method.Authorizator_Index, method.APIKeyEnabled, method.Authorization_Scopes)
 					} else {
-						m[fmt.Sprintf("%s%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), method.Method, index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, method.Method, resource, index, nil, 0, method.APIKeyEnabled)
+						m[fmt.Sprintf("%s%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), method.Method, index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, method.Method, resource, index, nil, 0, method.APIKeyEnabled, method.Authorization_Scopes)
 					}
 				}
 			}
@@ -137,9 +137,9 @@ func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIng
 			resourceLogicalName := fmt.Sprintf("%s%s%d", APIResourceResourceName, toLogicalName(idx, parts), index)
 			m[resourceLogicalName] = buildAWSApiGatewayResource(ref, part, index)
 			if authorizers != nil {
-				m[fmt.Sprintf("%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, "ANY", APIResource{}, index, &authorizers[0], 0, apiKeyEnabled)
+				m[fmt.Sprintf("%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, "ANY", APIResource{}, index, &authorizers[0], 0, apiKeyEnabled, nil)
 			} else {
-				m[fmt.Sprintf("%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, "ANY", APIResource{}, index, nil, 0, apiKeyEnabled)
+				m[fmt.Sprintf("%s%s%d", APIMethodResourceID, toLogicalName(idx, parts), index)] = buildAWSApiGatewayMethod(resourceLogicalName, toPath(idx, parts), requestTimeout, authorizationType, "ANY", APIResource{}, index, nil, 0, apiKeyEnabled, nil)
 			}
 		}
 	}
@@ -396,7 +396,7 @@ func buildAWSApiGatewayVpcLink(dependsOn []string) *apigateway.VpcLink {
 	return r
 }
 
-func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, authorizationType string, method string, resource APIResource, index int, authorizer *AWSAPIAuthorizer, authorizerIndex int, apiKeyRequired bool) *apigateway.Method {
+func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, authorizationType string, method string, resource APIResource, index int, authorizer *AWSAPIAuthorizer, authorizerIndex int, apiKeyRequired bool, scopes []string) *apigateway.Method {
 	requestParams := make(map[string]bool)
 	requestParams["method.request.path.proxy"] = true
 	integrationRequestParams := make(map[string]string)
@@ -427,33 +427,73 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 				integrationRequestParams[intVarName] = mathodVarName
 			}
 		}
-	}
-
-	if authorizationType == "TOKEN" || authorizationType == "REQUEST" {
-		authorizationType = "CUSTOM"
+		if resource.PathParams != nil && len(resource.PathParams) > 0 {
+			for _, param := range resource.PathParams {
+				integrationRequestParams[fmt.Sprintf("integration.request.path.%s", param.Key)] = fmt.Sprintf("'%s'", param.Value)
+			}
+		}
+		if resource.QueryParams != nil && len(resource.QueryParams) > 0 {
+			for _, param := range resource.QueryParams {
+				integrationRequestParams[fmt.Sprintf("integration.request.query.%s", param.Key)] = fmt.Sprintf("'%s'", param.Value)
+			}
+		}
+		if resource.HeaderParams != nil && len(resource.HeaderParams) > 0 {
+			for _, param := range resource.HeaderParams {
+				integrationRequestParams[fmt.Sprintf("integration.request.header.%s", param.Key)] = fmt.Sprintf("'%s'", param.Value)
+			}
+		}
 	}
 
 	var m *apigateway.Method
 
 	if authorizer != nil {
-		m = &apigateway.Method{
-			RequestParameters: requestParams,
-			AuthorizationType: authorizer.AuthorizerType,
-			ApiKeyRequired:    apiKeyRequired,
-			AuthorizerId:      cfn.Ref(fmt.Sprintf("%s%d%d", APIAuthorizerResourceName, index, authorizerIndex)),
-			HttpMethod:        method,
-			ResourceId:        cfn.Ref(resourceLogicalName),
-			RestApiId:         cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
-			Integration: &apigateway.Method_Integration{
-				ConnectionId:          cfn.Ref(VPCLinkResourceName),
-				ConnectionType:        "VPC_LINK",
-				IntegrationHttpMethod: "ANY",
-				PassthroughBehavior:   "WHEN_NO_MATCH",
-				RequestParameters:     integrationRequestParams,
-				Type:                  "HTTP_PROXY",
-				TimeoutInMillis:       timeout,
-				Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
-			},
+		if authorizer.AuthorizerType == "TOKEN" || authorizer.AuthorizerType == "REQUEST" {
+			authorizationType = "CUSTOM"
+			scopes = nil
+		} else {
+			authorizationType = authorizer.AuthorizerType
+		}
+		if scopes == nil {
+			m = &apigateway.Method{
+				RequestParameters: requestParams,
+				AuthorizationType: authorizationType,
+				ApiKeyRequired:    apiKeyRequired,
+				AuthorizerId:      cfn.Ref(fmt.Sprintf("%s%d%d", APIAuthorizerResourceName, index, authorizerIndex)),
+				HttpMethod:        method,
+				ResourceId:        cfn.Ref(resourceLogicalName),
+				RestApiId:         cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
+				Integration: &apigateway.Method_Integration{
+					ConnectionId:          cfn.Ref(VPCLinkResourceName),
+					ConnectionType:        "VPC_LINK",
+					IntegrationHttpMethod: "ANY",
+					PassthroughBehavior:   "WHEN_NO_MATCH",
+					RequestParameters:     integrationRequestParams,
+					Type:                  "HTTP_PROXY",
+					TimeoutInMillis:       timeout,
+					Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
+				},
+			}
+		} else {
+			m = &apigateway.Method{
+				RequestParameters:   requestParams,
+				AuthorizationType:   authorizationType,
+				AuthorizationScopes: scopes,
+				ApiKeyRequired:      apiKeyRequired,
+				AuthorizerId:        cfn.Ref(fmt.Sprintf("%s%d%d", APIAuthorizerResourceName, index, authorizerIndex)),
+				HttpMethod:          method,
+				ResourceId:          cfn.Ref(resourceLogicalName),
+				RestApiId:           cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
+				Integration: &apigateway.Method_Integration{
+					ConnectionId:          cfn.Ref(VPCLinkResourceName),
+					ConnectionType:        "VPC_LINK",
+					IntegrationHttpMethod: "ANY",
+					PassthroughBehavior:   "WHEN_NO_MATCH",
+					RequestParameters:     integrationRequestParams,
+					Type:                  "HTTP_PROXY",
+					TimeoutInMillis:       timeout,
+					Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
+				},
+			}
 		}
 	} else {
 		m = &apigateway.Method{
@@ -839,35 +879,19 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			}
 		}
 
-		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
-			if cfg.AWSAPIDefinitions[i].APIKeyEnabled {
-				if cfg.AWSAPIDefinitions[i].UsagePlans != nil && len(cfg.AWSAPIDefinitions[i].UsagePlans) > 0 {
-					for j, usagePlan := range cfg.AWSAPIDefinitions[i].UsagePlans {
-						keyArr := buildAPIKey(usagePlan, i)
-						for k, key := range keyArr {
-							template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyResourceName, j, k, i)] = key
-						}
-						template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
-						mapArr := buildUsagePlanAPIKeyMapping(usagePlan, j, i)
-						for k, key := range mapArr {
-							template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyUsagePlanResourceName, j, k, i)] = key
-						}
-					}
-				} else {
-					for j, usagePlan := range cfg.UsagePlans {
-						keyArr := buildAPIKey(usagePlan, i)
-						for k, key := range keyArr {
-							template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyResourceName, j, k, i)] = key
-						}
-						template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
-						mapArr := buildUsagePlanAPIKeyMapping(usagePlan, j, i)
-						for k, key := range mapArr {
-							template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyUsagePlanResourceName, j, k, i)] = key
-						}
-					}
+		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && cfg.AWSAPIDefinitions[i].APIKeyEnabled && cfg.AWSAPIDefinitions[i].UsagePlans != nil && len(cfg.AWSAPIDefinitions[i].UsagePlans) > 0 {
+			for j, usagePlan := range cfg.AWSAPIDefinitions[i].UsagePlans {
+				keyArr := buildAPIKey(usagePlan, i)
+				for k, key := range keyArr {
+					template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyResourceName, j, k, i)] = key
+				}
+				template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
+				mapArr := buildUsagePlanAPIKeyMapping(usagePlan, j, i)
+				for k, key := range mapArr {
+					template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyUsagePlanResourceName, j, k, i)] = key
 				}
 			}
-		} else if cfg.UsagePlans != nil && len(cfg.UsagePlans) > 0 {
+		} else if ((cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && cfg.AWSAPIDefinitions[i].APIKeyEnabled) || (cfg.AWSAPIDefinitions == nil && len(cfg.AWSAPIDefinitions) == 0)) && cfg.UsagePlans != nil && len(cfg.UsagePlans) > 0 {
 			for j, usagePlan := range cfg.UsagePlans {
 				keyArr := buildAPIKey(usagePlan, i)
 				for k, key := range keyArr {

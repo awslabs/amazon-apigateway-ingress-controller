@@ -64,19 +64,23 @@ type MethodThrottlingParametersObject struct {
 }
 
 type APIResource struct {
-	Path              string   `json:"path"`
-	CachingEnabled    bool     `json:"caching_enabled"`
-	Methods           []Method `json:"method"`
-	ProxyPathParams   []Param  `json:"path_params"`
-	ProxyQueryParams  []Param  `json:"query_params"`
-	ProxyHeaderParams []Param  `json:"header_params"`
+	Path              string          `json:"path"`
+	CachingEnabled    bool            `json:"caching_enabled"`
+	Methods           []Method        `json:"method"`
+	PathParams        []ConstantParam `json:"cons_path_params"`
+	QueryParams       []ConstantParam `json:"cons_query_params"`
+	HeaderParams      []ConstantParam `json:"cons_header_params"`
+	ProxyPathParams   []Param         `json:"path_params"`
+	ProxyQueryParams  []Param         `json:"query_params"`
+	ProxyHeaderParams []Param         `json:"header_params"`
 }
 
 type Method struct {
-	Method                string `json:"method,omitempty"`
-	APIKeyEnabled         bool   `json:"api_key_enabled"`
-	Authorization_Enabled bool   `json:"authorization_enabled"`
-	Authorizator_Index    int    `json:"authorizator_index"`
+	Method                string   `json:"method,omitempty"`
+	APIKeyEnabled         bool     `json:"api_key_enabled"`
+	Authorization_Enabled bool     `json:"authorization_enabled"`
+	Authorizator_Index    int      `json:"authorizator_index"`
+	Authorization_Scopes  []string `json:"scopes"`
 }
 
 type AWSAPIDefinition struct {
@@ -104,4 +108,9 @@ type AWSAPIAuthorizer struct {
 type Param struct {
 	Param    string `json:"param"`
 	Required bool   `json:"required"`
+}
+
+type ConstantParam struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
