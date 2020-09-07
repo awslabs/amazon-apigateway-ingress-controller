@@ -155,9 +155,10 @@ func buildAWSApiGatewayResource(ref, part string, index int) *apigateway.Resourc
 	}
 }
 
-func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationType string, minimumCompressionSize int, apiName string) *apigateway.RestApi {
+func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationType string, minimumCompressionSize int, apiName string, binaryMediaTypes []string) *apigateway.RestApi {
 	if authorizationType == "AWS_IAM" && minimumCompressionSize > 0 {
 		return &apigateway.RestApi{
+			BinaryMediaTypes:       binaryMediaTypes,
 			MinimumCompressionSize: minimumCompressionSize,
 			ApiKeySourceType:       "HEADER",
 			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
@@ -178,6 +179,7 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 		}
 	} else if authorizationType == "AWS_IAM" && minimumCompressionSize == 0 {
 		return &apigateway.RestApi{
+			BinaryMediaTypes: binaryMediaTypes,
 			ApiKeySourceType: "HEADER",
 			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
 				Types: []string{apiEPType},
@@ -197,6 +199,7 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 		}
 	} else if minimumCompressionSize > 0 {
 		return &apigateway.RestApi{
+			BinaryMediaTypes:       binaryMediaTypes,
 			MinimumCompressionSize: minimumCompressionSize,
 			ApiKeySourceType:       "HEADER",
 			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
@@ -217,6 +220,7 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 		}
 	} else {
 		return &apigateway.RestApi{
+			BinaryMediaTypes: binaryMediaTypes,
 			ApiKeySourceType: "HEADER",
 			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
 				Types: []string{apiEPType},
@@ -842,13 +846,21 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		}
 
 		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && !cfg.AWSAPIDefinitions[i].AuthenticationEnabled {
-			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, "NONE", cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name)
+			binaryMediaTypes := []string{"AWS::NoValue"}
+			if cfg.AWSAPIDefinitions[i].BinaryMediaTypes != nil && len(cfg.AWSAPIDefinitions[i].BinaryMediaTypes) > 0 {
+				binaryMediaTypes = cfg.AWSAPIDefinitions[i].BinaryMediaTypes
+			}
+			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, "NONE", cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name, binaryMediaTypes)
 			template.Resources[fmt.Sprintf("%s%d", APIResourceName, i)] = restAPI
 		} else if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
-			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType, cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name)
+			binaryMediaTypes := []string{"AWS::NoValue"}
+			if cfg.AWSAPIDefinitions[i].BinaryMediaTypes != nil && len(cfg.AWSAPIDefinitions[i].BinaryMediaTypes) > 0 {
+				binaryMediaTypes = cfg.AWSAPIDefinitions[i].BinaryMediaTypes
+			}
+			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType, cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name, binaryMediaTypes)
 			template.Resources[fmt.Sprintf("%s%d", APIResourceName, i)] = restAPI
 		} else {
-			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType, cfg.MinimumCompressionSize, cfn.Ref(AWSStackName))
+			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType, cfg.MinimumCompressionSize, cfn.Ref(AWSStackName), []string{"AWS::NoValue"})
 			template.Resources[fmt.Sprintf("%s%d", APIResourceName, i)] = restAPI
 		}
 

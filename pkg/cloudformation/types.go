@@ -92,6 +92,7 @@ type AWSAPIDefinition struct {
 	UsagePlans            []UsagePlan        `json:"usage_plans"`
 	Authorizers           []AWSAPIAuthorizer `json:"authorizers"`
 	APIs                  []APIResource      `json:"apis"`
+	BinaryMediaTypes      []string           `json:"binary_media_types"`
 }
 
 type AWSAPIAuthorizer struct {
