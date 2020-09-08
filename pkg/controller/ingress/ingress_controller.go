@@ -19,7 +19,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"time"
@@ -38,6 +40,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/cloudformation/cloudformationiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	cfn "github.com/awslabs/amazon-apigateway-ingress-controller/pkg/cloudformation"
 	"github.com/awslabs/amazon-apigateway-ingress-controller/pkg/finalizers"
 	"github.com/awslabs/amazon-apigateway-ingress-controller/pkg/logging"
@@ -66,6 +69,8 @@ const (
 	IngressClassAnnotation                  = "kubernetes.io/ingress.class"
 	IngressAnnotationNodeSelector           = "apigateway.ingress.kubernetes.io/node-selector"
 	IngressAnnotationClientArns             = "apigateway.ingress.kubernetes.io/client-arns"
+	IngressAnnotationCFS3BucketName         = "apigateway.ingress.kubernetes.io/cf-s3-bucket-name"
+	IngressAnnotationCFS3ObjectKey          = "apigateway.ingress.kubernetes.io/cf-s3-object-key"
 	IngressAnnotationCustomDomainName       = "apigateway.ingress.kubernetes.io/custom-domain-name"
 	IngressAnnotationCustomDomainBasePath   = "apigateway.ingress.kubernetes.io/custom-domain-base-path"
 	IngressAnnotationCertificateArn         = "apigateway.ingress.kubernetes.io/certificate-arn"
@@ -143,6 +148,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		ec2Svc:         ec2.New(sess),
 		apigatewaySvc:  apigateway.New(sess),
 		autoscalingSvc: autoscaling.New(sess),
+		s3Uploader:     s3manager.NewUploader(sess),
 	}
 }
 
@@ -183,6 +189,7 @@ type ReconcileIngress struct {
 	ec2Svc         ec2iface.EC2API
 	apigatewaySvc  apigatewayiface.APIGatewayAPI
 	autoscalingSvc autoscalingiface.AutoScalingAPI
+	s3Uploader     *s3manager.Uploader
 	log            *zap.Logger
 }
 
@@ -707,18 +714,57 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 	}
 
 	r.log.Info("creating cloudformation stack")
-	if _, err := r.cfnSvc.CreateStack(&cloudformation.CreateStackInput{
-		TemplateBody: aws.String(string(b)),
-		StackName:    aws.String(instance.GetObjectMeta().GetName()),
-		Capabilities: aws.StringSlice([]string{"CAPABILITY_NAMED_IAM"}),
-		Tags: []*cloudformation.Tag{
-			{
-				Key:   aws.String("managedBy"),
-				Value: aws.String("amazon-apigateway-ingress-controller"),
+
+	bucketName := getS3BucketName(instance)
+	objectKey := getS3ObjectKey(instance)
+	if bucketName != "" && objectKey != "" {
+		templateBytes := []byte(string(b))
+		err := ioutil.WriteFile(fmt.Sprintf("/tmp/%s", objectKey), templateBytes, 0644)
+		if err != nil {
+			return nil, err
+		}
+
+		file, err := os.Open(fmt.Sprintf("/tmp/%s", objectKey))
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
+		_, err = r.s3Uploader.Upload(&s3manager.UploadInput{
+			Bucket: aws.String(bucketName),
+			Key:    aws.String(objectKey),
+			Body:   file,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if _, err := r.cfnSvc.CreateStack(&cloudformation.CreateStackInput{
+			TemplateURL:  aws.String(fmt.Sprintf("https://s3.amazonaws.com/%s/%s", bucketName, objectKey)),
+			StackName:    aws.String(instance.GetObjectMeta().GetName()),
+			Capabilities: aws.StringSlice([]string{"CAPABILITY_NAMED_IAM"}),
+			Tags: []*cloudformation.Tag{
+				{
+					Key:   aws.String("managedBy"),
+					Value: aws.String("amazon-apigateway-ingress-controller"),
+				},
 			},
-		},
-	}); err != nil {
-		return nil, err
+		}); err != nil {
+			return nil, err
+		}
+	} else {
+		if _, err := r.cfnSvc.CreateStack(&cloudformation.CreateStackInput{
+			TemplateBody: aws.String(string(b)),
+			StackName:    aws.String(instance.GetObjectMeta().GetName()),
+			Capabilities: aws.StringSlice([]string{"CAPABILITY_NAMED_IAM"}),
+			Tags: []*cloudformation.Tag{
+				{
+					Key:   aws.String("managedBy"),
+					Value: aws.String("amazon-apigateway-ingress-controller"),
+				},
+			},
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	r.log.Info("cloudformation route53 stack creating, setting finalizers", zap.String("StackName", instance.ObjectMeta.Name))
@@ -774,19 +820,58 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cl
 		return err
 	}
 
-	if _, err := r.cfnSvc.UpdateStack(&cloudformation.UpdateStackInput{
-		TemplateBody: aws.String(string(b)),
-		StackName:    aws.String(instance.GetObjectMeta().GetName()),
-		Capabilities: aws.StringSlice([]string{"CAPABILITY_NAMED_IAM"}),
-		Tags: []*cloudformation.Tag{
-			{
-				Key:   aws.String("managedBy"),
-				Value: aws.String("aws-apigateway-ingress-controller"),
+	bucketName := getS3BucketName(instance)
+	objectKey := getS3ObjectKey(instance)
+	if bucketName != "" && objectKey != "" {
+		templateBytes := []byte(string(b))
+		err := ioutil.WriteFile(fmt.Sprintf("/tmp/%s", objectKey), templateBytes, 0644)
+		if err != nil {
+			return err
+		}
+
+		file, err := os.Open(fmt.Sprintf("/tmp/%s", objectKey))
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = r.s3Uploader.Upload(&s3manager.UploadInput{
+			Bucket: aws.String(bucketName),
+			Key:    aws.String(objectKey),
+			Body:   file,
+		})
+		if err != nil {
+			return err
+		}
+
+		if _, err := r.cfnSvc.UpdateStack(&cloudformation.UpdateStackInput{
+			TemplateURL:  aws.String(fmt.Sprintf("https://s3.amazonaws.com/%s/%s", bucketName, objectKey)),
+			StackName:    aws.String(instance.GetObjectMeta().GetName()),
+			Capabilities: aws.StringSlice([]string{"CAPABILITY_NAMED_IAM"}),
+			Tags: []*cloudformation.Tag{
+				{
+					Key:   aws.String("managedBy"),
+					Value: aws.String("aws-apigateway-ingress-controller"),
+				},
 			},
-		},
-	}); err != nil {
-		r.log.Error("unable to fetch proxy service", zap.Error(err))
-		return err
+		}); err != nil {
+			r.log.Error("unable to fetch proxy service", zap.Error(err))
+			return err
+		}
+	} else {
+		if _, err := r.cfnSvc.UpdateStack(&cloudformation.UpdateStackInput{
+			TemplateBody: aws.String(string(b)),
+			StackName:    aws.String(instance.GetObjectMeta().GetName()),
+			Capabilities: aws.StringSlice([]string{"CAPABILITY_NAMED_IAM"}),
+			Tags: []*cloudformation.Tag{
+				{
+					Key:   aws.String("managedBy"),
+					Value: aws.String("aws-apigateway-ingress-controller"),
+				},
+			},
+		}); err != nil {
+			r.log.Error("unable to fetch proxy service", zap.Error(err))
+			return err
+		}
 	}
 
 	return nil

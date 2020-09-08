@@ -16,6 +16,14 @@ import (
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 )
 
+func getS3BucketName(ingress *extensionsv1beta1.Ingress) string {
+	return ingress.ObjectMeta.Annotations[IngressAnnotationCFS3BucketName]
+}
+
+func getS3ObjectKey(ingress *extensionsv1beta1.Ingress) string {
+	return ingress.ObjectMeta.Annotations[IngressAnnotationCFS3ObjectKey]
+}
+
 func getRequestTimeout(ingress *extensionsv1beta1.Ingress) int {
 	var requetTimeoutStr string = ingress.ObjectMeta.Annotations[IngressAnnotationRequestTimeout]
 	requetTimeout, err := strconv.Atoi(requetTimeoutStr)
