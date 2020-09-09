@@ -156,7 +156,7 @@ func buildAWSApiGatewayResource(ref, part string, index int) *apigateway.Resourc
 }
 
 func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationType string, minimumCompressionSize int, apiName string, binaryMediaTypes []string) *apigateway.RestApi {
-	if authorizationType == "AWS_IAM" && minimumCompressionSize > 0 {
+	if authorizationType == "AWS_IAM" && minimumCompressionSize > 0 && binaryMediaTypes != nil {
 		return &apigateway.RestApi{
 			BinaryMediaTypes:       binaryMediaTypes,
 			MinimumCompressionSize: minimumCompressionSize,
@@ -177,7 +177,27 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 				},
 			},
 		}
-	} else if authorizationType == "AWS_IAM" && minimumCompressionSize == 0 {
+	} else if authorizationType == "AWS_IAM" && minimumCompressionSize > 0 {
+		return &apigateway.RestApi{
+			MinimumCompressionSize: minimumCompressionSize,
+			ApiKeySourceType:       "HEADER",
+			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
+				Types: []string{apiEPType},
+			},
+			Name: apiName,
+			Policy: &PolicyDocument{
+				Version: "2012-10-17",
+				Statement: []Statement{
+					{
+						Action:    []string{"execute-api:Invoke"},
+						Effect:    "Allow",
+						Principal: map[string][]string{"AWS": arns},
+						Resource:  []string{"*"},
+					},
+				},
+			},
+		}
+	} else if authorizationType == "AWS_IAM" && minimumCompressionSize == 0 && binaryMediaTypes != nil {
 		return &apigateway.RestApi{
 			BinaryMediaTypes: binaryMediaTypes,
 			ApiKeySourceType: "HEADER",
@@ -197,7 +217,26 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 				},
 			},
 		}
-	} else if minimumCompressionSize > 0 {
+	} else if authorizationType == "AWS_IAM" && minimumCompressionSize == 0 {
+		return &apigateway.RestApi{
+			ApiKeySourceType: "HEADER",
+			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
+				Types: []string{apiEPType},
+			},
+			Name: apiName,
+			Policy: &PolicyDocument{
+				Version: "2012-10-17",
+				Statement: []Statement{
+					{
+						Action:    []string{"execute-api:Invoke"},
+						Effect:    "Allow",
+						Principal: map[string][]string{"AWS": arns},
+						Resource:  []string{"*"},
+					},
+				},
+			},
+		}
+	} else if minimumCompressionSize > 0 && binaryMediaTypes != nil {
 		return &apigateway.RestApi{
 			BinaryMediaTypes:       binaryMediaTypes,
 			MinimumCompressionSize: minimumCompressionSize,
@@ -218,9 +257,48 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 				},
 			},
 		}
-	} else {
+	} else if minimumCompressionSize > 0 {
+		return &apigateway.RestApi{
+			MinimumCompressionSize: minimumCompressionSize,
+			ApiKeySourceType:       "HEADER",
+			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
+				Types: []string{apiEPType},
+			},
+			Name: apiName,
+			Policy: &AllPrinciplesPolicyDocument{
+				Version: "2012-10-17",
+				Statement: []AllPrinciplesStatement{
+					{
+						Action:    []string{"execute-api:Invoke"},
+						Effect:    "Allow",
+						Principal: "*",
+						Resource:  []string{"*"},
+					},
+				},
+			},
+		}
+	} else if binaryMediaTypes != nil {
 		return &apigateway.RestApi{
 			BinaryMediaTypes: binaryMediaTypes,
+			ApiKeySourceType: "HEADER",
+			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
+				Types: []string{apiEPType},
+			},
+			Name: apiName,
+			Policy: &AllPrinciplesPolicyDocument{
+				Version: "2012-10-17",
+				Statement: []AllPrinciplesStatement{
+					{
+						Action:    []string{"execute-api:Invoke"},
+						Effect:    "Allow",
+						Principal: "*",
+						Resource:  []string{"*"},
+					},
+				},
+			},
+		}
+	} else {
+		return &apigateway.RestApi{
 			ApiKeySourceType: "HEADER",
 			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
 				Types: []string{apiEPType},
@@ -612,7 +690,7 @@ func buildAPIKey(usagePlan UsagePlan, index int) []*apigateway.ApiKey {
 	return arr
 }
 
-func buildUsagePlan(usagePlan UsagePlan, stage string, index int) *apigateway.UsagePlan {
+func buildUsagePlan(usagePlan UsagePlan, stage string, index int, usagePlanMethodSettings []apigateway.UsagePlan_ApiStage) *apigateway.UsagePlan {
 	r := &apigateway.UsagePlan{
 		UsagePlanName: usagePlan.PlanName,
 		Description:   usagePlan.Description,
@@ -627,7 +705,11 @@ func buildUsagePlan(usagePlan UsagePlan, stage string, index int) *apigateway.Us
 		},
 	}
 
-	r.ApiStages = buildMethodThrottling(usagePlan.MethodThrottlingParameters, stage, index)
+	if usagePlanMethodSettings != nil {
+		r.ApiStages = usagePlanMethodSettings
+	} else {
+		r.ApiStages = buildMethodThrottling(usagePlan.MethodThrottlingParameters, stage, index)
+	}
 
 	r.AWSCloudFormationDependsOn = []string{fmt.Sprintf("%s%d", DeploymentResourceName, index)}
 
@@ -821,6 +903,10 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Resources[WAFACLResourceName] = webACL
 	}
 
+	usagePlanStages := make(map[int][]apigateway.UsagePlan_ApiStage)
+	useGlobalUsagePlans := false
+	globalUsagePlanIndex := 0
+
 	for i := 0; i < apiSize; i++ {
 
 		methodLogicalNames := []string{}
@@ -846,14 +932,14 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		}
 
 		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && !cfg.AWSAPIDefinitions[i].AuthenticationEnabled {
-			binaryMediaTypes := []string{"AWS::NoValue"}
+			var binaryMediaTypes []string
 			if cfg.AWSAPIDefinitions[i].BinaryMediaTypes != nil && len(cfg.AWSAPIDefinitions[i].BinaryMediaTypes) > 0 {
 				binaryMediaTypes = cfg.AWSAPIDefinitions[i].BinaryMediaTypes
 			}
 			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, "NONE", cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name, binaryMediaTypes)
 			template.Resources[fmt.Sprintf("%s%d", APIResourceName, i)] = restAPI
 		} else if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
-			binaryMediaTypes := []string{"AWS::NoValue"}
+			var binaryMediaTypes []string
 			if cfg.AWSAPIDefinitions[i].BinaryMediaTypes != nil && len(cfg.AWSAPIDefinitions[i].BinaryMediaTypes) > 0 {
 				binaryMediaTypes = cfg.AWSAPIDefinitions[i].BinaryMediaTypes
 			}
@@ -892,31 +978,44 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		}
 
 		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && cfg.AWSAPIDefinitions[i].APIKeyEnabled && cfg.AWSAPIDefinitions[i].UsagePlans != nil && len(cfg.AWSAPIDefinitions[i].UsagePlans) > 0 {
+			globalUsagePlanIndex++
 			for j, usagePlan := range cfg.AWSAPIDefinitions[i].UsagePlans {
 				keyArr := buildAPIKey(usagePlan, i)
 				for k, key := range keyArr {
 					template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyResourceName, j, k, i)] = key
 				}
-				template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
+				template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, i)] = buildUsagePlan(usagePlan, cfg.StageName, i, nil)
 				mapArr := buildUsagePlanAPIKeyMapping(usagePlan, j, i)
 				for k, key := range mapArr {
 					template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyUsagePlanResourceName, j, k, i)] = key
 				}
 			}
 		} else if ((cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && cfg.AWSAPIDefinitions[i].APIKeyEnabled) || (cfg.AWSAPIDefinitions == nil && len(cfg.AWSAPIDefinitions) == 0)) && cfg.UsagePlans != nil && len(cfg.UsagePlans) > 0 {
+			useGlobalUsagePlans = true
 			for j, usagePlan := range cfg.UsagePlans {
-				keyArr := buildAPIKey(usagePlan, i)
-				for k, key := range keyArr {
-					template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyResourceName, j, k, i)] = key
-				}
-				template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, i)] = buildUsagePlan(usagePlan, cfg.StageName, i)
-				mapArr := buildUsagePlanAPIKeyMapping(usagePlan, j, i)
-				for k, key := range mapArr {
-					template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyUsagePlanResourceName, j, k, i)] = key
+				usagePlanCurrentStage := buildMethodThrottling(usagePlan.MethodThrottlingParameters, cfg.StageName, i)
+				if usagePlanStages == nil {
+					usagePlanStages[j] = usagePlanCurrentStage
+				} else {
+					usagePlanStages[j] = append(usagePlanStages[j], usagePlanCurrentStage...)
 				}
 			}
 		}
 
+	}
+
+	if useGlobalUsagePlans {
+		for j, usagePlan := range cfg.UsagePlans {
+			keyArr := buildAPIKey(usagePlan, globalUsagePlanIndex)
+			for k, key := range keyArr {
+				template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyResourceName, j, k, globalUsagePlanIndex)] = key
+			}
+			template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, globalUsagePlanIndex)] = buildUsagePlan(usagePlan, cfg.StageName, globalUsagePlanIndex, usagePlanStages[j])
+			mapArr := buildUsagePlanAPIKeyMapping(usagePlan, j, globalUsagePlanIndex)
+			for k, key := range mapArr {
+				template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyUsagePlanResourceName, j, k, globalUsagePlanIndex)] = key
+			}
+		}
 	}
 
 	loadBalancer := buildAWSElasticLoadBalancingV2LoadBalancer(cfg.Network.SubnetIDs)

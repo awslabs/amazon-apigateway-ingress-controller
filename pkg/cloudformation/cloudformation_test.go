@@ -64,16 +64,20 @@ func getUsagePlan() UsagePlan {
 				Name:               "cusKey2",
 			},
 		},
-		QuotaLimit:         100,
-		QuotaPeriod:        "MONTH",
-		ThrottleBurstLimit: 100,
-		ThrottleRateLimit:  100,
-		MethodThrottlingParameters: []MethodThrottlingParametersObject{
-			{
-				Path:       "/api/v1/foobar",
-				BurstLimit: 100,
-				RateLimit:  100,
-			},
+		QuotaLimit:                 100,
+		QuotaPeriod:                "MONTH",
+		ThrottleBurstLimit:         100,
+		ThrottleRateLimit:          100,
+		MethodThrottlingParameters: getMethodThrottlingParams(),
+	}
+}
+
+func getMethodThrottlingParams() []MethodThrottlingParametersObject {
+	return []MethodThrottlingParametersObject{
+		MethodThrottlingParametersObject{
+			Path:       "/api/v1/foobar",
+			BurstLimit: 100,
+			RateLimit:  100,
 		},
 	}
 }
@@ -94,17 +98,11 @@ func getUsagePlanSilver() UsagePlan {
 				Name:               "cusKey2",
 			},
 		},
-		QuotaLimit:         100,
-		QuotaPeriod:        "MONTH",
-		ThrottleBurstLimit: 100,
-		ThrottleRateLimit:  100,
-		MethodThrottlingParameters: []MethodThrottlingParametersObject{
-			{
-				Path:       "/api/v1/foobar",
-				BurstLimit: 100,
-				RateLimit:  100,
-			},
-		},
+		QuotaLimit:                 100,
+		QuotaPeriod:                "MONTH",
+		ThrottleBurstLimit:         100,
+		ThrottleRateLimit:          100,
+		MethodThrottlingParameters: getMethodThrottlingParams(),
 	}
 }
 
@@ -131,17 +129,11 @@ func getSecondUsagePlan() UsagePlan {
 				Name:               "cusKey2",
 			},
 		},
-		QuotaLimit:         100,
-		QuotaPeriod:        "MONTH",
-		ThrottleBurstLimit: 100,
-		ThrottleRateLimit:  100,
-		MethodThrottlingParameters: []MethodThrottlingParametersObject{
-			{
-				Path:       "/api/v1/foobar",
-				BurstLimit: 100,
-				RateLimit:  100,
-			},
-		},
+		QuotaLimit:                 100,
+		QuotaPeriod:                "MONTH",
+		ThrottleBurstLimit:         100,
+		ThrottleRateLimit:          100,
+		MethodThrottlingParameters: getMethodThrottlingParams(),
 	}
 }
 
@@ -257,6 +249,7 @@ func getAPIDef() AWSAPIDefinition {
 		Authorizers:           getAuthDefs(),
 		UsagePlans:            getSecondUsagePlans(),
 		APIs:                  getAPIResources(),
+		BinaryMediaTypes:      []string{"foo/bar"},
 	}
 }
 
@@ -383,6 +376,7 @@ func getAPIDefAuthDisabled() AWSAPIDefinition {
 		AuthenticationEnabled: false,
 		APIKeyEnabled:         false,
 		Authorization_Enabled: true,
+		BinaryMediaTypes:      []string{"foo/bar"},
 	}
 }
 
@@ -693,7 +687,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"VPCLink":                   buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"APIKeyUsagePlan000":        getAPIKeyMappingBuild(0, 0, 0),
 					"APIKeyUsagePlan010":        getAPIKeyMappingBuild(1, 0, 0),
-					"UsagePlan00":               buildUsagePlan(getUsagePlan(), "baz", 0),
+					"UsagePlan00":               buildUsagePlan(getUsagePlan(), "baz", 0, buildMethodThrottling(getMethodThrottlingParams(), "baz", 0)),
 					"APIKey000":                 getAPIKeyBuild(0),
 					"APIKey010":                 getAPIKeyBuild(1),
 				},
@@ -762,7 +756,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"VPCLink":                   buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"APIKeyUsagePlan000":        getAPIKeyMappingBuild(0, 0, 0),
 					"APIKeyUsagePlan010":        getAPIKeyMappingBuild(1, 0, 0),
-					"UsagePlan00":               buildUsagePlan(getUsagePlan(), "baz", 0),
+					"UsagePlan00":               buildUsagePlan(getUsagePlan(), "baz", 0, buildMethodThrottling(getMethodThrottlingParams(), "baz", 0)),
 					"APIKey000":                 getAPIKeyBuild(0),
 					"APIKey010":                 getAPIKeyBuild(1),
 				},
@@ -1751,7 +1745,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					SecurityGroupIDs: []string{"sg-foo"},
 				},
 				Arns:                   []string{"arn::foo"},
-				StageName:              "baz",
+				StageName:              "baf",
 				NodePort:               30123,
 				RequestTimeout:         10000,
 				TLSPolicy:              "TLS_1_2",
@@ -1777,45 +1771,45 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"TargetGroup":                  buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
 					"Listener":                     buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":        buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
-					"RestAPI0":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0, "api0", []string{"AWS::NoValue"}),
-					"RestAPI1":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0, "api1", []string{"AWS::NoValue"}),
-					"Deployment0":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapiv1foobarGET0", "Methodapiv1foobarPOST0"}, false, nil, "", 0),
-					"Deployment1":                  buildAWSApiGatewayDeployment("baz", []string{"Methodapiv1foobarGET1", "Methodapiv1foobarPOST1"}, false, nil, "", 1),
+					"RestAPI0":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0, "api0", []string{"foo/bar"}),
+					"RestAPI1":                     buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0, "api1", nil),
+					"Deployment0":                  buildAWSApiGatewayDeployment("baf", []string{"Methodapiv1foobarGET0", "Methodapiv1foobarPOST0"}, false, nil, "", 0),
+					"Deployment1":                  buildAWSApiGatewayDeployment("baf", []string{"Methodapiv1foobarGET1", "Methodapiv1foobarPOST1"}, false, nil, "", 1),
 					"LoadBalancer":                 buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
 					"VPCLink":                      buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"APIKeyUsagePlan000":           getSecondAPIKeyMappingBuild(0, 0, 0),
-					"APIKeyUsagePlan001":           getSecondAPIKeyMappingBuild(0, 0, 1),
 					"APIKeyUsagePlan010":           getSecondAPIKeyMappingBuild(1, 0, 0),
-					"APIKeyUsagePlan011":           getSecondAPIKeyMappingBuild(1, 0, 1),
 					"APIKeyUsagePlan100":           getSecondAPIKeyMappingBuild(0, 1, 0),
-					"APIKeyUsagePlan101":           getSecondAPIKeyMappingBuild(0, 1, 1),
 					"APIKeyUsagePlan110":           getSecondAPIKeyMappingBuild(1, 1, 0),
+					"APIKeyUsagePlan001":           getSecondAPIKeyMappingBuild(0, 0, 1),
+					"APIKeyUsagePlan011":           getSecondAPIKeyMappingBuild(1, 0, 1),
+					"APIKeyUsagePlan101":           getSecondAPIKeyMappingBuild(0, 1, 1),
 					"APIKeyUsagePlan111":           getSecondAPIKeyMappingBuild(1, 1, 1),
-					"UsagePlan00":                  buildUsagePlan(getUsagePlanSilver(), "baz", 0),
-					"UsagePlan01":                  buildUsagePlan(getUsagePlanSilver(), "baz", 1),
-					"UsagePlan10":                  buildUsagePlan(getSecondUsagePlan(), "baz", 0),
-					"UsagePlan11":                  buildUsagePlan(getSecondUsagePlan(), "baz", 1),
+					"UsagePlan00":                  buildUsagePlan(getUsagePlanSilver(), "baf", 0, buildMethodThrottling(getMethodThrottlingParams(), "baf", 0)),
+					"UsagePlan10":                  buildUsagePlan(getSecondUsagePlan(), "baf", 0, buildMethodThrottling(getMethodThrottlingParams(), "baf", 0)),
+					"UsagePlan01":                  buildUsagePlan(getUsagePlanSilver(), "baf", 1, buildMethodThrottling(getMethodThrottlingParams(), "baf", 1)),
+					"UsagePlan11":                  buildUsagePlan(getSecondUsagePlan(), "baf", 1, buildMethodThrottling(getMethodThrottlingParams(), "baf", 1)),
 					"APIKey000":                    getSecondAPIKeyBuild(0, 0),
 					"APIKey100":                    getSecondAPIKeyBuild(0, 0),
+					"APIKey010":                    getSecondAPIKeyBuild(1, 0),
+					"APIKey110":                    getSecondAPIKeyBuild(1, 0),
 					"APIKey001":                    getSecondAPIKeyBuild(0, 1),
 					"APIKey101":                    getSecondAPIKeyBuild(0, 1),
 					"APIKey011":                    getSecondAPIKeyBuild(1, 1),
-					"APIKey010":                    getSecondAPIKeyBuild(1, 0),
-					"APIKey110":                    getSecondAPIKeyBuild(1, 0),
 					"APIKey111":                    getSecondAPIKeyBuild(1, 1),
 					"RestAPIAuthorizer00":          buildAuthorizer(getAuthDef(), 0),
 					"RestAPIAuthorizer01":          buildAuthorizer(getAuthDefCognito(), 0),
 					"RestAPIAuthorizer10":          buildAuthorizer(getAuthDef(), 1),
 					"RestAPIAuthorizer11":          buildAuthorizer(getAuthDefCognito(), 1),
 					"CustomDomain":                 buildCustomDomain("example.com", "arn::foobar", "EDGE", "TLS_1_2"),
-					"CustomDomainBasePathMapping0": buildCustomDomainBasePathMapping("example.com", "baz", "api0", 0),
-					"CustomDomainBasePathMapping1": buildCustomDomainBasePathMapping("example.com", "baz", "api1", 1),
+					"CustomDomainBasePathMapping0": buildCustomDomainBasePathMapping("example.com", "baf", "api0", 0),
+					"CustomDomainBasePathMapping1": buildCustomDomainBasePathMapping("example.com", "baf", "api1", 1),
 				},
 				Outputs: map[string]interface{}{
 					"RestAPIID0":               Output{Value: cfn.Ref("RestAPI0")},
 					"RestAPIID1":               Output{Value: cfn.Ref("RestAPI1")},
-					"APIGatewayEndpoint0":      Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI0"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
-					"APIGatewayEndpoint1":      Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI1"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"APIGatewayEndpoint0":      Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI0"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baf"})},
+					"APIGatewayEndpoint1":      Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI1"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baf"})},
 					"ClientARNS":               Output{Value: strings.Join([]string{"arn::foo"}, ",")},
 					"APIGWEndpointType":        Output{Value: "EDGE"},
 					"RequestTimeout":           Output{Value: "10000"},
@@ -1904,9 +1898,9 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"TargetGroup":               buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
 					"Listener":                  buildAWSElasticLoadBalancingV2Listener(),
 					"SecurityGroupIngress0":     buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
-					"RestAPI0":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 1000000000, "api1", []string{"AWS::NoValue"}),
-					"RestAPI1":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 1000000000, "api2", []string{"AWS::NoValue"}),
-					"RestAPI2":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 1000000000, "api3", []string{"AWS::NoValue"}),
+					"RestAPI0":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 1000000000, "api1", nil),
+					"RestAPI1":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 1000000000, "api2", nil),
+					"RestAPI2":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 1000000000, "api3", []string{"foo/bar"}),
 					"RestAPI3":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 1000000000, "api4", []string{"foo/bar"}),
 					"Deployment0":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi0", "Methodapiv10", "Methodapiv1foobar0", "Methodapiv1foobarproxy0"}, false, nil, "", 0),
 					"Deployment1":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi1", "Methodapiv11", "Methodapiv1foobar1", "Methodapiv1foobarproxy1"}, false, nil, "", 1),
@@ -1916,7 +1910,122 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"VPCLink":                   buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 					"APIKeyUsagePlan000":        getAPIKeyMappingBuild(0, 0, 0),
 					"APIKeyUsagePlan010":        getAPIKeyMappingBuild(1, 0, 0),
-					"UsagePlan00":               buildUsagePlan(getUsagePlan(), "baz", 0),
+					"UsagePlan00":               buildUsagePlan(getUsagePlan(), "baz", 0, nil),
+					"APIKey000":                 getAPIKeyBuild(0),
+					"APIKey010":                 getAPIKeyBuild(1),
+					"RestAPIAuthorizer00":       buildAuthorizer(getAuthDefCognito(), 0),
+					"RestAPIAuthorizer01":       buildAuthorizer(getAuthDefToken(), 0),
+					"RestAPIAuthorizer02":       buildAuthorizer(getAuthDefRequest(), 0),
+					"RestAPIAuthorizer10":       buildAuthorizer(getAuthDefCognito(), 1),
+					"RestAPIAuthorizer11":       buildAuthorizer(getAuthDefToken(), 1),
+					"RestAPIAuthorizer12":       buildAuthorizer(getAuthDefRequest(), 1),
+					"RestAPIAuthorizer20":       buildAuthorizer(getAuthDefCognito(), 2),
+					"RestAPIAuthorizer21":       buildAuthorizer(getAuthDefToken(), 2),
+					"RestAPIAuthorizer22":       buildAuthorizer(getAuthDefRequest(), 2),
+				},
+				Outputs: map[string]interface{}{
+					"RestAPIID0":             Output{Value: cfn.Ref("RestAPI0")},
+					"RestAPIID1":             Output{Value: cfn.Ref("RestAPI1")},
+					"RestAPIID2":             Output{Value: cfn.Ref("RestAPI2")},
+					"RestAPIID3":             Output{Value: cfn.Ref("RestAPI3")},
+					"APIGatewayEndpoint0":    Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI0"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"APIGatewayEndpoint1":    Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI1"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"APIGatewayEndpoint2":    Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI2"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"APIGatewayEndpoint3":    Output{Value: cfn.Join("", []string{"https://", cfn.Ref("RestAPI3"), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", "baz"})},
+					"APIGWEndpointType":      Output{Value: "EDGE"},
+					"RequestTimeout":         Output{Value: "10000"},
+					"MinimumCompressionSize": Output{Value: "1000000000"},
+					"UsagePlansData":         Output{Value: getUsagePlanBytes()},
+					"AWSAPIConfigs":          Output{Value: getAWSAPIDefWOUsagePlansBytes()},
+					"IngressRules":           Output{Value: getIngressRulesJsonStr()},
+				},
+			},
+		},
+		{
+			name: "generates template API Defs without Usage plans and with auth enabled no compression",
+			args: &TemplateConfig{
+				Rule: extensionsv1beta1.IngressRule{
+					IngressRuleValue: extensionsv1beta1.IngressRuleValue{
+						HTTP: &extensionsv1beta1.HTTPIngressRuleValue{
+							Paths: []extensionsv1beta1.HTTPIngressPath{
+								{
+									Path: "/api/v1/foobar",
+									Backend: extensionsv1beta1.IngressBackend{
+										ServiceName: "foobar-service",
+										ServicePort: intstr.FromInt(8080),
+									},
+								},
+							},
+						},
+					},
+				},
+				Network: &network.Network{
+					Vpc: &ec2.Vpc{
+						VpcId:     aws.String("foo"),
+						CidrBlock: aws.String("10.0.0.0/24"),
+					},
+					InstanceIDs:      []string{"i-foo"},
+					SubnetIDs:        []string{"sn-foo"},
+					SecurityGroupIDs: []string{"sg-foo"},
+				},
+				StageName:         "baz",
+				NodePort:          30123,
+				RequestTimeout:    10000,
+				TLSPolicy:         "TLS_1_2",
+				UsagePlans:        getUsagePlans(),
+				AWSAPIDefinitions: getAPIDefsWOUsagePlans(),
+			},
+			want: &cfn.Template{
+				Resources: cfn.Resources{
+					"LambdaInvokeRole":          buildLambdaExecutionRole(),
+					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true, nil),
+					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true, nil),
+					"Methodapiv1foobar0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true, nil),
+					"Methodapiv1foobarproxy0":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy0", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true, nil),
+					"Methodapi1":                buildAWSApiGatewayMethod("Resourceapi1", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapiv11":              buildAWSApiGatewayMethod("Resourceapiv11", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapiv1foobar1":        buildAWSApiGatewayMethod("Resourceapiv1foobar1", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapiv1foobarproxy1":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy1", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 1, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapi2":                buildAWSApiGatewayMethod("Resourceapi2", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapiv12":              buildAWSApiGatewayMethod("Resourceapiv12", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapiv1foobar2":        buildAWSApiGatewayMethod("Resourceapiv1foobar2", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapiv1foobarproxy2":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy2", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 2, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapi3":                buildAWSApiGatewayMethod("Resourceapi3", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapiv13":              buildAWSApiGatewayMethod("Resourceapiv13", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapiv1foobar3":        buildAWSApiGatewayMethod("Resourceapiv1foobar3", toPath(3, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3, getAuthDefCognitoPointer(), 0, false, nil),
+					"Methodapiv1foobarproxy3":   buildAWSApiGatewayMethod("Resourceapiv1foobarproxy3", toPath(4, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 3, getAuthDefCognitoPointer(), 0, false, nil),
+					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
+					"Resourceapi1":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI1", "RootResourceId"), "api", 1),
+					"Resourceapi2":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI2", "RootResourceId"), "api", 2),
+					"Resourceapi3":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI3", "RootResourceId"), "api", 3),
+					"Resourceapiv10":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
+					"Resourceapiv1foobar0":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
+					"Resourceapiv1foobarproxy0": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar0"), "{proxy+}", 0),
+					"Resourceapiv11":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi1"), "v1", 1),
+					"Resourceapiv1foobar1":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv11"), "foobar", 1),
+					"Resourceapiv1foobarproxy1": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar1"), "{proxy+}", 1),
+					"Resourceapiv12":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi2"), "v1", 2),
+					"Resourceapiv1foobar2":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv12"), "foobar", 2),
+					"Resourceapiv1foobarproxy2": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar2"), "{proxy+}", 2),
+					"Resourceapiv13":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi3"), "v1", 3),
+					"Resourceapiv1foobar3":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv13"), "foobar", 3),
+					"Resourceapiv1foobarproxy3": buildAWSApiGatewayResource(cfn.Ref("Resourceapiv1foobar3"), "{proxy+}", 3),
+					"TargetGroup":               buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":                  buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0":     buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI0":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 0, "api1", nil),
+					"RestAPI1":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 0, "api2", nil),
+					"RestAPI2":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 0, "api3", []string{"foo/bar"}),
+					"RestAPI3":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "NONE", 0, "api4", []string{"foo/bar"}),
+					"Deployment0":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi0", "Methodapiv10", "Methodapiv1foobar0", "Methodapiv1foobarproxy0"}, false, nil, "", 0),
+					"Deployment1":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi1", "Methodapiv11", "Methodapiv1foobar1", "Methodapiv1foobarproxy1"}, false, nil, "", 1),
+					"Deployment2":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi2", "Methodapiv12", "Methodapiv1foobar2", "Methodapiv1foobarproxy2"}, false, nil, "", 2),
+					"Deployment3":               buildAWSApiGatewayDeployment("baz", []string{"Methodapi3", "Methodapiv13", "Methodapiv1foobar3", "Methodapiv1foobarproxy3"}, false, nil, "", 3),
+					"LoadBalancer":              buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":                   buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+					"APIKeyUsagePlan000":        getAPIKeyMappingBuild(0, 0, 0),
+					"APIKeyUsagePlan010":        getAPIKeyMappingBuild(1, 0, 0),
+					"UsagePlan00":               buildUsagePlan(getUsagePlan(), "baz", 0, nil),
 					"APIKey000":                 getAPIKeyBuild(0),
 					"APIKey010":                 getAPIKeyBuild(1),
 					"RestAPIAuthorizer00":       buildAuthorizer(getAuthDefCognito(), 0),
@@ -1952,8 +2061,15 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := BuildAPIGatewayTemplateFromIngressRule(tt.args)
+			// printed := false
 			for k, resource := range got.Resources {
 				if !reflect.DeepEqual(resource, tt.want.Resources[k]) {
+					// if !printed {
+					// 	gotYaml, _ := got.YAML()
+					// 	wantYaml, _ := tt.want.YAML()
+					// 	t.Errorf("Got Resources.%s = %v, want %v", k, string(gotYaml), string(wantYaml))
+					// 	printed = true
+					// }
 					t.Errorf("Got Resources.%s = %v, want %v", k, got.Resources, tt.want.Resources)
 				}
 			}
