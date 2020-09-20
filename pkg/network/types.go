@@ -33,7 +33,8 @@ func GetNetworkInfoForEC2Instances(ec2svc ec2iface.EC2API, autoscalingSvc autosc
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("Error describing instances: %s", err)
 	}
-
+	m := make(map[string]string)
+	asgsids := map[string]bool{}
 	vids := map[string]bool{}
 	sids := map[string]bool{}
 	sgs := map[string]bool{}
@@ -47,7 +48,7 @@ func GetNetworkInfoForEC2Instances(ec2svc ec2iface.EC2API, autoscalingSvc autosc
 				}
 			}
 			if *instance.SubnetId != "" {
-				sids[*instance.SubnetId] = true
+				asgsids[*instance.SubnetId] = true
 			}
 			for _, sg := range instance.SecurityGroups {
 				sgs[*sg.GroupId] = true
@@ -70,12 +71,33 @@ func GetNetworkInfoForEC2Instances(ec2svc ec2iface.EC2API, autoscalingSvc autosc
 
 			// It is possible the ASG has more subnets to choose, when instance_count < subnets_in_ASG
 			for _, sid := range strings.Split(*asgOutput.AutoScalingGroups[0].VPCZoneIdentifier, ",") {
-				sids[sid] = true
+				asgsids[sid] = true
 			}
 
 		}
 	}
+	// ASG provide multiple subnets. Following code ensure to have only one subnet per AZ(remove others) as per NLB requirement.
+	// More enhancement required. at the moment code select one random subnet from AZ.
+	for subnets := range asgsids {
+		result, err := ec2svc.DescribeSubnets(&ec2.DescribeSubnetsInput{
+			Filters: []*ec2.Filter{
+				{
+					Name: aws.String("subnet-id"),
+					Values: []*string{
+						aws.String(subnets),
+					},
+				},
+			},
+		})
+		if err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("Error describing Subnets: %s", err)
+		}
+		m[*result.Subnets[0].AvailabilityZone] = subnets
 
+	}
+	for _, subnets := range m {
+		sids[subnets] = true
+	}
 	subnetIds = getListFromMap(sids)
 	securityGroups = getListFromMap(sgs)
 	vpcIds = getListFromMap(vids)
