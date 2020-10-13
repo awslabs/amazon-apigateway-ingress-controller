@@ -3,6 +3,7 @@ package cloudformation
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -74,10 +75,14 @@ const (
 
 func toLogicalName(idx int, parts []string) string {
 	s := strings.Join(parts[:idx+1], "")
-	remove := []string{"{", "}", "+", "-", "*", "_"}
-	for _, char := range remove {
-		s = strings.Replace(s, char, "", -1)
+	reg, err := regexp.Compile("[^a-zA-Z0-9]+")
+	if err != nil {
+		remove := []string{"{", "}", "+", "-", "*", "_"}
+		for _, char := range remove {
+			s = strings.Replace(s, char, "", -1)
+		}
 	}
+	s = reg.ReplaceAllString(s, "")
 	return s
 }
 
