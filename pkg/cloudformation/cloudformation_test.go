@@ -195,6 +195,13 @@ func getAPIResources() []APIResource {
 	}
 }
 
+func getAPIResourcesWithLambda() []APIResource {
+	return []APIResource{
+		getAPIResource(),
+		getLambdaAPIResource(),
+	}
+}
+
 func getAuthDef() AWSAPIAuthorizer {
 	return AWSAPIAuthorizer{
 		IdentitySource:               "foo",
@@ -468,8 +475,70 @@ func getAPIResource() APIResource {
 	}
 }
 
+func getLambdaAPIResource() APIResource {
+	return APIResource{
+		Path: "/api/v1/foolambda",
+		Methods: []Method{
+			{
+				Method:                "POST",
+				APIKeyEnabled:         false,
+				Authorization_Enabled: true,
+				Authorizator_Index:    1,
+				Authorization_Scopes: []string{
+					"foo",
+					"bar",
+				},
+			},
+		},
+		Type:           "Lambda",
+		LambdaArn:      "foo::bar",
+		CachingEnabled: false,
+		ProxyPathParams: []Param{
+			{
+				Param:    "fooid",
+				Required: true,
+			},
+		},
+		ProxyQueryParams: []Param{
+			{
+				Param:    "fooid",
+				Required: true,
+			},
+		},
+		ProxyHeaderParams: []Param{
+			{
+				Param:    "fooid",
+				Required: true,
+			},
+		},
+		PathParams: []ConstantParam{
+			{
+				Key:   "key",
+				Value: "value",
+			},
+		},
+		QueryParams: []ConstantParam{
+			{
+				Key:   "key",
+				Value: "value",
+			},
+		},
+		HeaderParams: []ConstantParam{
+			{
+				Key:   "key",
+				Value: "value",
+			},
+		},
+	}
+}
+
 func getAPIResourcesBytes() string {
 	resourcesBytes, _ := json.Marshal(getAPIResources())
+	return string(resourcesBytes)
+}
+
+func getAPIWithLambdaResourcesBytes() string {
+	resourcesBytes, _ := json.Marshal(getAPIResourcesWithLambda())
 	return string(resourcesBytes)
 }
 
@@ -1558,23 +1627,25 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 				RequestTimeout:         10000,
 				TLSPolicy:              "TLS_1_2",
 				MinimumCompressionSize: 0,
-				APIResources:           getAPIResources(),
+				APIResources:           getAPIResourcesWithLambda(),
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
-					"LambdaInvokeRole":       buildLambdaExecutionRole(),
-					"Methodapiv1foobarGET0":  buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0, nil, 0, true, nil),
-					"Methodapiv1foobarPOST0": buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0, nil, 0, false, []string{"foo", "bar"}),
-					"Resourceapi0":           buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
-					"Resourceapiv10":         buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
-					"Resourceapiv1foobar0":   buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
-					"TargetGroup":            buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
-					"Listener":               buildAWSElasticLoadBalancingV2Listener(),
-					"SecurityGroupIngress0":  buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
-					"RestAPI0":               buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0, cfn.Ref("AWS::StackName"), []string{"AWS::NoValue"}),
-					"Deployment0":            buildAWSApiGatewayDeployment("baz", []string{"Methodapiv1foobarGET0", "Methodapiv1foobarPOST0"}, false, getAPIResources(), "", 0),
-					"LoadBalancer":           buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
-					"VPCLink":                buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
+					"LambdaInvokeRole":          buildLambdaExecutionRole(),
+					"Methodapiv1foobarGET0":     buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0, nil, 0, true, nil),
+					"Methodapiv1foobarPOST0":    buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0, nil, 0, false, []string{"foo", "bar"}),
+					"Methodapiv1foolambdaPOST0": buildAWSApiGatewayMethod("Resourceapiv1foolambda0", toPath(3, []string{"", "api", "v1", "foolambda"}), 10000, "AWS_IAM", "POST", getLambdaAPIResource(), 0, nil, 0, false, []string{"foo", "bar"}),
+					"Resourceapi0":              buildAWSApiGatewayResource(cfn.GetAtt("RestAPI0", "RootResourceId"), "api", 0),
+					"Resourceapiv10":            buildAWSApiGatewayResource(cfn.Ref("Resourceapi0"), "v1", 0),
+					"Resourceapiv1foobar0":      buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foobar", 0),
+					"Resourceapiv1foolambda0":   buildAWSApiGatewayResource(cfn.Ref("Resourceapiv10"), "foolambda", 0),
+					"TargetGroup":               buildAWSElasticLoadBalancingV2TargetGroup("foo", []string{"i-foo"}, 30123, []string{"LoadBalancer"}),
+					"Listener":                  buildAWSElasticLoadBalancingV2Listener(),
+					"SecurityGroupIngress0":     buildAWSEC2SecurityGroupIngresses([]string{"sg-foo"}, "10.0.0.0/24", 30123)[0],
+					"RestAPI0":                  buildAWSApiGatewayRestAPI([]string{"arn::foo"}, "EDGE", "AWS_IAM", 0, cfn.Ref("AWS::StackName"), []string{"AWS::NoValue"}),
+					"Deployment0":               buildAWSApiGatewayDeployment("baz", []string{"Methodapiv1foobarGET0", "Methodapiv1foobarPOST0", "Methodapiv1foolambdaPOST0"}, false, getAPIResources(), "", 0),
+					"LoadBalancer":              buildAWSElasticLoadBalancingV2LoadBalancer([]string{"sn-foo"}),
+					"VPCLink":                   buildAWSApiGatewayVpcLink([]string{"LoadBalancer"}),
 				},
 				Outputs: map[string]interface{}{
 					"RestAPIID0":          Output{Value: cfn.Ref("RestAPI0")},
@@ -1582,7 +1653,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 					"ClientARNS":          Output{Value: strings.Join([]string{"arn::foo"}, ",")},
 					"APIGWEndpointType":   Output{Value: "EDGE"},
 					"RequestTimeout":      Output{Value: "10000"},
-					"APIResources":        Output{Value: getAPIResourcesBytes()},
+					"APIResources":        Output{Value: getAPIWithLambdaResourcesBytes()},
 					"IngressRules":        Output{Value: getIngressRulesJsonStr()},
 				},
 			},

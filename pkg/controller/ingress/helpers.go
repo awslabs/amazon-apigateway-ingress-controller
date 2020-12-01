@@ -319,7 +319,7 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		return true
 	}
 
-	if cfn.StackOutputMap(stack)[cfn.OutputKeyTLSPolicy] != getTLSPolicy(instance) {
+	if getCustomDomainName(instance) != "" && cfn.StackOutputMap(stack)[cfn.OutputKeyTLSPolicy] != getTLSPolicy(instance) {
 		r.log.Info("TLS policy not matching, Should Update",
 			zap.String("Input", getTLSPolicy(instance)),
 			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyTLSPolicy]))

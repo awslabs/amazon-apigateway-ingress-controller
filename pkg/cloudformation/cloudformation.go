@@ -531,7 +531,14 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		}
 	}
 
-	var m *apigateway.Method
+	m := &apigateway.Method{
+		RequestParameters: requestParams,
+		AuthorizationType: authorizationType,
+		ApiKeyRequired:    apiKeyRequired,
+		HttpMethod:        method,
+		ResourceId:        cfn.Ref(resourceLogicalName),
+		RestApiId:         cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
+	}
 
 	if authorizer != nil {
 		if authorizer.AuthorizerType == "TOKEN" || authorizer.AuthorizerType == "REQUEST" {
@@ -541,65 +548,37 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 			authorizationType = authorizer.AuthorizerType
 		}
 		if scopes == nil {
-			m = &apigateway.Method{
-				RequestParameters: requestParams,
-				AuthorizationType: authorizationType,
-				ApiKeyRequired:    apiKeyRequired,
-				AuthorizerId:      cfn.Ref(fmt.Sprintf("%s%d%d", APIAuthorizerResourceName, index, authorizerIndex)),
-				HttpMethod:        method,
-				ResourceId:        cfn.Ref(resourceLogicalName),
-				RestApiId:         cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
-				Integration: &apigateway.Method_Integration{
-					ConnectionId:          cfn.Ref(VPCLinkResourceName),
-					ConnectionType:        "VPC_LINK",
-					IntegrationHttpMethod: "ANY",
-					PassthroughBehavior:   "WHEN_NO_MATCH",
-					RequestParameters:     integrationRequestParams,
-					Type:                  "HTTP_PROXY",
-					TimeoutInMillis:       timeout,
-					Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
-				},
-			}
+			m.AuthorizerId = cfn.Ref(fmt.Sprintf("%s%d%d", APIAuthorizerResourceName, index, authorizerIndex))
 		} else {
-			m = &apigateway.Method{
-				RequestParameters:   requestParams,
-				AuthorizationType:   authorizationType,
-				AuthorizationScopes: scopes,
-				ApiKeyRequired:      apiKeyRequired,
-				AuthorizerId:        cfn.Ref(fmt.Sprintf("%s%d%d", APIAuthorizerResourceName, index, authorizerIndex)),
-				HttpMethod:          method,
-				ResourceId:          cfn.Ref(resourceLogicalName),
-				RestApiId:           cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
-				Integration: &apigateway.Method_Integration{
-					ConnectionId:          cfn.Ref(VPCLinkResourceName),
-					ConnectionType:        "VPC_LINK",
-					IntegrationHttpMethod: "ANY",
-					PassthroughBehavior:   "WHEN_NO_MATCH",
-					RequestParameters:     integrationRequestParams,
-					Type:                  "HTTP_PROXY",
-					TimeoutInMillis:       timeout,
-					Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
-				},
-			}
+			m.AuthorizationScopes = scopes
+			m.AuthorizerId = cfn.Ref(fmt.Sprintf("%s%d%d", APIAuthorizerResourceName, index, authorizerIndex))
+		}
+	}
+
+	if resource.Type == "Lambda" {
+		m.Integration = &apigateway.Method_Integration{
+			ConnectionType:        "INTERNET",
+			IntegrationHttpMethod: "ANY",
+			PassthroughBehavior:   "WHEN_NO_MATCH",
+			RequestParameters:     integrationRequestParams,
+			Type:                  "AWS",
+			TimeoutInMillis:       timeout,
+			Uri:                   cfn.Join("", []string{"http://", cfn.Ref(AWSRegion), fmt.Sprintf("lambda:path/2015-03-31/functions/%s/invocations", resource.LambdaArn)}),
+		}
+	} else if resource.Type == "Mock" {
+		m.Integration = &apigateway.Method_Integration{
+			Type: "MOCK",
 		}
 	} else {
-		m = &apigateway.Method{
-			RequestParameters: requestParams,
-			AuthorizationType: authorizationType,
-			ApiKeyRequired:    apiKeyRequired,
-			HttpMethod:        method,
-			ResourceId:        cfn.Ref(resourceLogicalName),
-			RestApiId:         cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
-			Integration: &apigateway.Method_Integration{
-				ConnectionId:          cfn.Ref(VPCLinkResourceName),
-				ConnectionType:        "VPC_LINK",
-				IntegrationHttpMethod: "ANY",
-				PassthroughBehavior:   "WHEN_NO_MATCH",
-				RequestParameters:     integrationRequestParams,
-				Type:                  "HTTP_PROXY",
-				TimeoutInMillis:       timeout,
-				Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
-			},
+		m.Integration = &apigateway.Method_Integration{
+			ConnectionId:          cfn.Ref(VPCLinkResourceName),
+			ConnectionType:        "VPC_LINK",
+			IntegrationHttpMethod: "ANY",
+			PassthroughBehavior:   "WHEN_NO_MATCH",
+			RequestParameters:     integrationRequestParams,
+			Type:                  "HTTP_PROXY",
+			TimeoutInMillis:       timeout,
+			Uri:                   cfn.Join("", []string{"http://", cfn.GetAtt(LoadBalancerResourceName, "DNSName"), path}),
 		}
 	}
 

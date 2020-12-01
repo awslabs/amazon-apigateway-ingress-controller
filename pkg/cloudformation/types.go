@@ -73,6 +73,8 @@ type APIResource struct {
 	ProxyPathParams   []Param         `json:"path_params"`
 	ProxyQueryParams  []Param         `json:"query_params"`
 	ProxyHeaderParams []Param         `json:"header_params"`
+	Type              string          `json:"type"`
+	LambdaArn         string          `json:"lambda_arn"`
 }
 
 type Method struct {
