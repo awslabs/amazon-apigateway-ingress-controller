@@ -493,7 +493,12 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		if resource.ProxyPathParams != nil && len(resource.ProxyPathParams) > 0 {
 			for _, param := range resource.ProxyPathParams {
 				mathodVarName := fmt.Sprintf("method.request.path.%s", param.Param)
-				intVarName := fmt.Sprintf("integration.request.path.%s", param.Param)
+				var intVarName string
+				if param.MappingParam != "" {
+					intVarName = param.MappingParam
+				} else {
+					intVarName = fmt.Sprintf("integration.request.path.%s", param.Param)
+				}
 				requestParams[mathodVarName] = true
 				integrationRequestParams[intVarName] = mathodVarName
 			}
@@ -501,7 +506,12 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		if resource.ProxyQueryParams != nil && len(resource.ProxyQueryParams) > 0 {
 			for _, param := range resource.ProxyQueryParams {
 				mathodVarName := fmt.Sprintf("method.request.query.%s", param.Param)
-				intVarName := fmt.Sprintf("integration.request.query.%s", param.Param)
+				var intVarName string
+				if param.MappingParam != "" {
+					intVarName = param.MappingParam
+				} else {
+					intVarName = fmt.Sprintf("integration.request.query.%s", param.Param)
+				}
 				requestParams[mathodVarName] = true
 				integrationRequestParams[intVarName] = mathodVarName
 			}
@@ -509,7 +519,12 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		if resource.ProxyHeaderParams != nil && len(resource.ProxyHeaderParams) > 0 {
 			for _, param := range resource.ProxyHeaderParams {
 				mathodVarName := fmt.Sprintf("method.request.header.%s", param.Param)
-				intVarName := fmt.Sprintf("integration.request.header.%s", param.Param)
+				var intVarName string
+				if param.MappingParam != "" {
+					intVarName = param.MappingParam
+				} else {
+					intVarName = fmt.Sprintf("integration.request.header.%s", param.Param)
+				}
 				requestParams[mathodVarName] = true
 				integrationRequestParams[intVarName] = mathodVarName
 			}
@@ -533,7 +548,6 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 
 	m := &apigateway.Method{
 		RequestParameters: requestParams,
-		AuthorizationType: authorizationType,
 		ApiKeyRequired:    apiKeyRequired,
 		HttpMethod:        method,
 		ResourceId:        cfn.Ref(resourceLogicalName),
@@ -555,6 +569,8 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		}
 	}
 
+	m.AuthorizationType = authorizationType
+
 	if resource.Type == "Lambda" {
 		m.Integration = &apigateway.Method_Integration{
 			ConnectionType:        "INTERNET",
@@ -563,7 +579,7 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 			RequestParameters:     integrationRequestParams,
 			Type:                  "AWS",
 			TimeoutInMillis:       timeout,
-			Uri:                   cfn.Join("", []string{"http://", cfn.Ref(AWSRegion), fmt.Sprintf("lambda:path/2015-03-31/functions/%s/invocations", resource.LambdaArn)}),
+			Uri:                   cfn.Join("", []string{"arn:aws:apigateway:", cfn.Ref(AWSRegion), fmt.Sprintf(":lambda:path/2015-03-31/functions/%s/invocations", resource.LambdaArn)}),
 		}
 	} else if resource.Type == "Mock" {
 		m.Integration = &apigateway.Method_Integration{

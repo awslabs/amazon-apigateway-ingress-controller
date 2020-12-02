@@ -109,8 +109,9 @@ type AWSAPIAuthorizer struct {
 }
 
 type Param struct {
-	Param    string `json:"param"`
-	Required bool   `json:"required"`
+	Param        string `json:"param"`
+	Required     bool   `json:"required"`
+	MappingParam string `json:"mapping_param"`
 }
 
 type ConstantParam struct {
