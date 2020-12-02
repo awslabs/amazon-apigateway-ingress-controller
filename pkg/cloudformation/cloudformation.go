@@ -582,7 +582,7 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		}
 	}
 
-	m.AWSCloudFormationDependsOn = []string{LoadBalancerResourceName}
+	m.AWSCloudFormationDependsOn = []string{LoadBalancerResourceName, VPCLinkResourceName}
 	return m
 }
 
