@@ -31,6 +31,7 @@ const (
 	APIResourceResourceName                 = "Resource"
 	APIResourceName                         = "RestAPI"
 	APIAuthorizerResourceName               = "RestAPIAuthorizer"
+	APIEmptyModelResourceName               = "RestAPIEmptyModel"
 	CustomDomainResourceName                = "CustomDomain"
 	CustomDomainBasePathMappingResourceName = "CustomDomainBasePathMapping"
 	DeploymentResourceName                  = "Deployment"
@@ -162,6 +163,15 @@ func buildAWSApiGatewayResource(ref, part string, index int) *apigateway.Resourc
 	return resource
 }
 
+func buildAWSApiGatewayEmptyModel(index int) *apigateway.Model {
+	model := &apigateway.Model{
+		ContentType: "application/json",
+		Schema:      "{\"$schema\": \"http://json-schema.org/draft-04/schema#\",\"title\" : \"Empty Schema\", \"type\" : \"object\" }",
+		RestApiId:   cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
+	}
+	return model
+}
+
 func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationType string, minimumCompressionSize int, apiName string, binaryMediaTypes []string) *apigateway.RestApi {
 	api := &apigateway.RestApi{
 		ApiKeySourceType: "HEADER",
@@ -282,6 +292,7 @@ func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingE
 			CacheClusterEnabled: cachingEnabled,
 			CacheClusterSize:    cacheSize,
 			CacheDataEncrypted:  cachingEnabled,
+			LoggingLevel:        "INFO",
 			MethodSettings:      buildAWSAPIGWDeploymentMethodSettings(cachingEnabled, apiResources),
 		},
 	}
@@ -451,10 +462,27 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 	}
 
 	m.AuthorizationType = authorizationType
+	successResponseTemplates := make(map[string]string)
+	successResponseTemplates["application/json"] = ""
+	integrationResponses := []apigateway.Method_IntegrationResponse{
+		{
+			ResponseTemplates: successResponseTemplates,
+			StatusCode:        "200",
+		},
+	}
+	successMethodResponseTemplates := make(map[string]string)
+	successMethodResponseTemplates["application/json"] = cfn.Ref(fmt.Sprintf("%s%d", APIEmptyModelResourceName, index))
+	methodResponses := []apigateway.Method_MethodResponse{
+		{
+			ResponseModels: successMethodResponseTemplates,
+			StatusCode:     "200",
+		},
+	}
 
 	if resource.Type == "Lambda" {
 		m.Integration = &apigateway.Method_Integration{
 			ConnectionType:        "INTERNET",
+			IntegrationResponses:  integrationResponses,
 			IntegrationHttpMethod: "ANY",
 			PassthroughBehavior:   "WHEN_NO_MATCH",
 			RequestParameters:     integrationRequestParams,
@@ -462,10 +490,16 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 			TimeoutInMillis:       timeout,
 			Uri:                   cfn.Join("", []string{"arn:aws:apigateway:", cfn.Ref(AWSRegion), fmt.Sprintf(":lambda:path/2015-03-31/functions/%s/invocations", resource.LambdaArn)}),
 		}
+		m.MethodResponses = methodResponses
 	} else if resource.Type == "Mock" {
+		requestTemplates := make(map[string]string)
+		requestTemplates["application/json"] = "{statusCode: 200}"
 		m.Integration = &apigateway.Method_Integration{
-			Type: "MOCK",
+			Type:                 "MOCK",
+			RequestTemplates:     requestTemplates,
+			IntegrationResponses: integrationResponses,
 		}
+		m.MethodResponses = methodResponses
 	} else {
 		m.Integration = &apigateway.Method_Integration{
 			ConnectionId:          cfn.Ref(VPCLinkResourceName),
@@ -882,6 +916,8 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 				}
 			}
 		}
+
+		template.Resources[fmt.Sprintf("%s%d", APIEmptyModelResourceName, i)] = buildAWSApiGatewayEmptyModel(i)
 
 	}
 

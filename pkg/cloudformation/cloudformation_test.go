@@ -611,6 +611,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -674,6 +675,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -738,6 +740,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true, nil),
 					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true, nil),
@@ -807,6 +810,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true, nil),
 					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, nil, 0, true, nil),
@@ -878,6 +882,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -951,6 +956,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -1022,6 +1028,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -1094,6 +1101,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -1165,6 +1173,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":           buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
 					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -1239,6 +1248,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":           buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
 					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -1313,6 +1323,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":           buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
 					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -1389,6 +1400,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":           buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
 					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -1471,6 +1483,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":           buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
 					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -1553,6 +1566,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":           buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
 					"Methodapi0":                   buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
 					"Methodapiv10":                 buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "AWS_IAM", "ANY", APIResource{}, 0, nil, 0, false, nil),
@@ -1631,6 +1645,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapiv1foobarGET0":     buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0, nil, 0, true, nil),
 					"Methodapiv1foobarPOST0":    buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0, nil, 0, false, []string{"foo", "bar"}),
@@ -1696,6 +1711,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":     buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":       buildLambdaExecutionRole(),
 					"Methodapiv1foobarGET0":  buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0, nil, 0, true, nil),
 					"Methodapiv1foobarPOST0": buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0, nil, 0, false, []string{"foo", "bar"}),
@@ -1761,6 +1777,7 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":     buildAWSApiGatewayEmptyModel(0),
 					"LambdaInvokeRole":       buildLambdaExecutionRole(),
 					"Methodapiv1foobarGET0":  buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0, nil, 0, true, nil),
 					"Methodapiv1foobarPOST0": buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0, nil, 0, false, []string{"foo", "bar"}),
@@ -1828,6 +1845,8 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":           buildAWSApiGatewayEmptyModel(0),
+					"RestAPIEmptyModel1":           buildAWSApiGatewayEmptyModel(1),
 					"LambdaInvokeRole":             buildLambdaExecutionRole(),
 					"Methodapiv1foobarGET0":        buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "GET", getAPIResource(), 0, getAuthDefPointer(), 0, true, nil),
 					"Methodapiv1foobarPOST0":       buildAWSApiGatewayMethod("Resourceapiv1foobar0", toPath(3, []string{"", "api", "v1", "foobar"}), 10000, "AWS_IAM", "POST", getAPIResource(), 0, getCognitoAuthDefPointer(), 1, false, []string{"foo", "bar"}),
@@ -1933,6 +1952,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
+					"RestAPIEmptyModel1":        buildAWSApiGatewayEmptyModel(1),
+					"RestAPIEmptyModel2":        buildAWSApiGatewayEmptyModel(2),
+					"RestAPIEmptyModel3":        buildAWSApiGatewayEmptyModel(3),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true, nil),
 					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true, nil),
@@ -2048,6 +2071,10 @@ func TestBuildApiGatewayTemplateFromIngressRule(t *testing.T) {
 			},
 			want: &cfn.Template{
 				Resources: cfn.Resources{
+					"RestAPIEmptyModel0":        buildAWSApiGatewayEmptyModel(0),
+					"RestAPIEmptyModel1":        buildAWSApiGatewayEmptyModel(1),
+					"RestAPIEmptyModel2":        buildAWSApiGatewayEmptyModel(2),
+					"RestAPIEmptyModel3":        buildAWSApiGatewayEmptyModel(3),
 					"LambdaInvokeRole":          buildLambdaExecutionRole(),
 					"Methodapi0":                buildAWSApiGatewayMethod("Resourceapi0", toPath(1, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true, nil),
 					"Methodapiv10":              buildAWSApiGatewayMethod("Resourceapiv10", toPath(2, []string{"", "api", "v1", "foobar", "{proxy+}"}), 10000, "NONE", "ANY", APIResource{}, 0, getAuthDefCognitoPointer(), 0, true, nil),
