@@ -153,175 +153,56 @@ func mapApiGatewayMethodsAndResourcesFromPaths(paths []extensionsv1beta1.HTTPIng
 }
 
 func buildAWSApiGatewayResource(ref, part string, index int) *apigateway.Resource {
-	return &apigateway.Resource{
+	resource := &apigateway.Resource{
 		ParentId:  ref,
 		PathPart:  part,
 		RestApiId: cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
 	}
+	resource.AWSCloudFormationDependsOn = []string{VPCLinkResourceName}
+	return resource
 }
 
 func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationType string, minimumCompressionSize int, apiName string, binaryMediaTypes []string) *apigateway.RestApi {
-	if authorizationType == "AWS_IAM" && minimumCompressionSize > 0 && binaryMediaTypes != nil {
-		return &apigateway.RestApi{
-			BinaryMediaTypes:       binaryMediaTypes,
-			MinimumCompressionSize: minimumCompressionSize,
-			ApiKeySourceType:       "HEADER",
-			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
-				Types: []string{apiEPType},
-			},
-			Name: apiName,
-			Policy: &PolicyDocument{
-				Version: "2012-10-17",
-				Statement: []Statement{
-					{
-						Action:    []string{"execute-api:Invoke"},
-						Effect:    "Allow",
-						Principal: map[string][]string{"AWS": arns},
-						Resource:  []string{"*"},
-					},
-				},
-			},
-		}
-	} else if authorizationType == "AWS_IAM" && minimumCompressionSize > 0 {
-		return &apigateway.RestApi{
-			MinimumCompressionSize: minimumCompressionSize,
-			ApiKeySourceType:       "HEADER",
-			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
-				Types: []string{apiEPType},
-			},
-			Name: apiName,
-			Policy: &PolicyDocument{
-				Version: "2012-10-17",
-				Statement: []Statement{
-					{
-						Action:    []string{"execute-api:Invoke"},
-						Effect:    "Allow",
-						Principal: map[string][]string{"AWS": arns},
-						Resource:  []string{"*"},
-					},
-				},
-			},
-		}
-	} else if authorizationType == "AWS_IAM" && minimumCompressionSize == 0 && binaryMediaTypes != nil {
-		return &apigateway.RestApi{
-			BinaryMediaTypes: binaryMediaTypes,
-			ApiKeySourceType: "HEADER",
-			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
-				Types: []string{apiEPType},
-			},
-			Name: apiName,
-			Policy: &PolicyDocument{
-				Version: "2012-10-17",
-				Statement: []Statement{
-					{
-						Action:    []string{"execute-api:Invoke"},
-						Effect:    "Allow",
-						Principal: map[string][]string{"AWS": arns},
-						Resource:  []string{"*"},
-					},
-				},
-			},
-		}
-	} else if authorizationType == "AWS_IAM" && minimumCompressionSize == 0 {
-		return &apigateway.RestApi{
-			ApiKeySourceType: "HEADER",
-			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
-				Types: []string{apiEPType},
-			},
-			Name: apiName,
-			Policy: &PolicyDocument{
-				Version: "2012-10-17",
-				Statement: []Statement{
-					{
-						Action:    []string{"execute-api:Invoke"},
-						Effect:    "Allow",
-						Principal: map[string][]string{"AWS": arns},
-						Resource:  []string{"*"},
-					},
-				},
-			},
-		}
-	} else if minimumCompressionSize > 0 && binaryMediaTypes != nil {
-		return &apigateway.RestApi{
-			BinaryMediaTypes:       binaryMediaTypes,
-			MinimumCompressionSize: minimumCompressionSize,
-			ApiKeySourceType:       "HEADER",
-			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
-				Types: []string{apiEPType},
-			},
-			Name: apiName,
-			Policy: &AllPrinciplesPolicyDocument{
-				Version: "2012-10-17",
-				Statement: []AllPrinciplesStatement{
-					{
-						Action:    []string{"execute-api:Invoke"},
-						Effect:    "Allow",
-						Principal: "*",
-						Resource:  []string{"*"},
-					},
-				},
-			},
-		}
-	} else if minimumCompressionSize > 0 {
-		return &apigateway.RestApi{
-			MinimumCompressionSize: minimumCompressionSize,
-			ApiKeySourceType:       "HEADER",
-			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
-				Types: []string{apiEPType},
-			},
-			Name: apiName,
-			Policy: &AllPrinciplesPolicyDocument{
-				Version: "2012-10-17",
-				Statement: []AllPrinciplesStatement{
-					{
-						Action:    []string{"execute-api:Invoke"},
-						Effect:    "Allow",
-						Principal: "*",
-						Resource:  []string{"*"},
-					},
-				},
-			},
-		}
-	} else if binaryMediaTypes != nil {
-		return &apigateway.RestApi{
-			BinaryMediaTypes: binaryMediaTypes,
-			ApiKeySourceType: "HEADER",
-			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
-				Types: []string{apiEPType},
-			},
-			Name: apiName,
-			Policy: &AllPrinciplesPolicyDocument{
-				Version: "2012-10-17",
-				Statement: []AllPrinciplesStatement{
-					{
-						Action:    []string{"execute-api:Invoke"},
-						Effect:    "Allow",
-						Principal: "*",
-						Resource:  []string{"*"},
-					},
+	api := &apigateway.RestApi{
+		ApiKeySourceType: "HEADER",
+		EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
+			Types: []string{apiEPType},
+		},
+		Name: apiName,
+	}
+	if authorizationType == "AWS_IAM" {
+		api.Policy = &PolicyDocument{
+			Version: "2012-10-17",
+			Statement: []Statement{
+				{
+					Action:    []string{"execute-api:Invoke"},
+					Effect:    "Allow",
+					Principal: map[string][]string{"AWS": arns},
+					Resource:  []string{"*"},
 				},
 			},
 		}
 	} else {
-		return &apigateway.RestApi{
-			ApiKeySourceType: "HEADER",
-			EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
-				Types: []string{apiEPType},
-			},
-			Name: apiName,
-			Policy: &AllPrinciplesPolicyDocument{
-				Version: "2012-10-17",
-				Statement: []AllPrinciplesStatement{
-					{
-						Action:    []string{"execute-api:Invoke"},
-						Effect:    "Allow",
-						Principal: "*",
-						Resource:  []string{"*"},
-					},
+		api.Policy = &AllPrinciplesPolicyDocument{
+			Version: "2012-10-17",
+			Statement: []AllPrinciplesStatement{
+				{
+					Action:    []string{"execute-api:Invoke"},
+					Effect:    "Allow",
+					Principal: "*",
+					Resource:  []string{"*"},
 				},
 			},
 		}
 	}
+	if minimumCompressionSize > 0 {
+		api.MinimumCompressionSize = minimumCompressionSize
+	}
+	if binaryMediaTypes != nil {
+		api.BinaryMediaTypes = binaryMediaTypes
+	}
+	api.AWSCloudFormationDependsOn = []string{VPCLinkResourceName}
+	return api
 }
 
 type EmptyAction struct{}
