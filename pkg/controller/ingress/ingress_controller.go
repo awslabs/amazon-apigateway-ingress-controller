@@ -92,6 +92,7 @@ const (
 	IngressAnnotationGWCacheEnabled         = "apigateway.ingress.kubernetes.io/gateway-cache-enabled"
 	IngressAnnotationGWCacheSize            = "apigateway.ingress.kubernetes.io/gateway-cache-size"
 	IngressAnnotationAWSAPIConfigs          = "apigateway.ingress.kubernetes.io/aws-api-configs"
+	IngressAnnotationLoggingLevel           = "apigateway.ingress.kubernetes.io/logging-level"
 	Route53StackNamePostfix                 = "-route53"
 )
 
@@ -704,6 +705,7 @@ func (r *ReconcileIngress) create(instance *extensionsv1beta1.Ingress) (*extensi
 		MinimumCompressionSize: getCompressionSize(instance),
 		CachingEnabled:         getGWCacheEnabled(instance),
 		CachingSize:            getCacheSize(instance),
+		LoggingLevel:           getLoggingLevel(instance),
 		APIResources:           getAPIResources(instance),
 		AWSAPIDefinitions:      getAWSAPIConfigs(instance),
 	})
@@ -812,6 +814,7 @@ func (r *ReconcileIngress) update(instance *extensionsv1beta1.Ingress, stack *cl
 		MinimumCompressionSize: getCompressionSize(instance),
 		CachingEnabled:         getGWCacheEnabled(instance),
 		CachingSize:            getCacheSize(instance),
+		LoggingLevel:           getLoggingLevel(instance),
 		APIResources:           getAPIResources(instance),
 		AWSAPIDefinitions:      getAWSAPIConfigs(instance),
 	})

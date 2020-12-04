@@ -20,6 +20,10 @@ func getS3BucketName(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationCFS3BucketName]
 }
 
+func getLoggingLevel(ingress *extensionsv1beta1.Ingress) string {
+	return ingress.ObjectMeta.Annotations[IngressAnnotationLoggingLevel]
+}
+
 func getS3ObjectKey(ingress *extensionsv1beta1.Ingress) string {
 	return ingress.ObjectMeta.Annotations[IngressAnnotationCFS3ObjectKey]
 }
@@ -302,6 +306,13 @@ func shouldUpdate(stack *cloudformation.Stack, instance *extensionsv1beta1.Ingre
 		r.log.Info("Custom Domain not matching, Should Update",
 			zap.String("Input", getCustomDomainName(instance)),
 			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputKeyCustomDomain]))
+		return true
+	}
+
+	if cfn.StackOutputMap(stack)[cfn.OutputLoggingLevel] != getLoggingLevel(instance) {
+		r.log.Info("LoggingLevel not matching, Should Update",
+			zap.String("Input", getLoggingLevel(instance)),
+			zap.String("Output", cfn.StackOutputMap(stack)[cfn.OutputLoggingLevel]))
 		return true
 	}
 

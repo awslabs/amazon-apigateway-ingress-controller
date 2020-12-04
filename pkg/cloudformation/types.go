@@ -95,6 +95,7 @@ type AWSAPIDefinition struct {
 	Authorizers           []AWSAPIAuthorizer `json:"authorizers"`
 	APIs                  []APIResource      `json:"apis"`
 	BinaryMediaTypes      []string           `json:"binary_media_types"`
+	LoggingLevel          string             `json:"logging_level"`
 }
 
 type AWSAPIAuthorizer struct {

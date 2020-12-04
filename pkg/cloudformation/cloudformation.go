@@ -72,6 +72,7 @@ const (
 	OutputKeyCacheClusterSize               = "CachingSize"
 	OutputKeyAPIResources                   = "APIResources"
 	OutputKeyAWSAPIConfigs                  = "AWSAPIConfigs"
+	OutputLoggingLevel                      = "LoggingLevel"
 )
 
 func toLogicalName(idx int, parts []string) string {
@@ -284,7 +285,7 @@ func buildAWSAPIGWDeploymentMethodSettings(cachingEnabled bool, apiResources []A
 	return methodSettings
 }
 
-func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingEnabled bool, apiResources []APIResource, cacheSize string, index int) *apigateway.Deployment {
+func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingEnabled bool, apiResources []APIResource, cacheSize string, loggingLevel string, index int) *apigateway.Deployment {
 	d := &apigateway.Deployment{
 		RestApiId: cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
 		StageName: stageName,
@@ -292,9 +293,12 @@ func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingE
 			CacheClusterEnabled: cachingEnabled,
 			CacheClusterSize:    cacheSize,
 			CacheDataEncrypted:  cachingEnabled,
-			LoggingLevel:        "INFO",
 			MethodSettings:      buildAWSAPIGWDeploymentMethodSettings(cachingEnabled, apiResources),
 		},
+	}
+
+	if loggingLevel != "" {
+		d.StageDescription.LoggingLevel = loggingLevel
 	}
 
 	// Since we construct a map of in `mapApiGatewayMethodsAndResourcesFromPaths` we can't determine the order
@@ -549,7 +553,7 @@ func buildCustomDomainBasePathMapping(domainName string, stageName string, baseP
 		}
 	}
 
-	r.AWSCloudFormationDependsOn = []string{fmt.Sprintf("%s%d", DeploymentResourceName, index)}
+	r.AWSCloudFormationDependsOn = []string{fmt.Sprintf("%s%d", DeploymentResourceName, index), CustomDomainResourceName}
 	return r
 }
 
@@ -752,6 +756,7 @@ type TemplateConfig struct {
 	MinimumCompressionSize int
 	CachingEnabled         bool
 	CachingSize            string
+	LoggingLevel           string
 	APIResources           []APIResource
 	AWSAPIDefinitions      []AWSAPIDefinition
 }
@@ -872,7 +877,14 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			}
 		}
 
-		deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources, cfg.CachingSize, i)
+		var loggingLevel string
+		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
+			loggingLevel = cfg.AWSAPIDefinitions[i].LoggingLevel
+		} else {
+			loggingLevel = cfg.LoggingLevel
+		}
+
+		deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources, cfg.CachingSize, loggingLevel, i)
 		template.Resources[fmt.Sprintf("%s%d", DeploymentResourceName, i)] = deployment
 
 		if cfg.CustomDomainName != "" && cfg.CertificateArn != "" {
@@ -1014,6 +1026,10 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 	if cfg.APIResources != nil && len(cfg.APIResources) > 0 {
 		val, _ := json.Marshal(cfg.APIResources)
 		template.Outputs[OutputKeyAPIResources] = Output{Value: string(val)}
+	}
+
+	if cfg.LoggingLevel != "" {
+		template.Outputs[OutputLoggingLevel] = Output{Value: cfg.LoggingLevel}
 	}
 
 	return template
