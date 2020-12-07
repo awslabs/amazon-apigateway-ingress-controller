@@ -487,7 +487,7 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		m.Integration = &apigateway.Method_Integration{
 			ConnectionType:        "INTERNET",
 			IntegrationResponses:  integrationResponses,
-			IntegrationHttpMethod: "ANY",
+			IntegrationHttpMethod: method,
 			PassthroughBehavior:   "WHEN_NO_MATCH",
 			RequestParameters:     integrationRequestParams,
 			Type:                  "AWS",
@@ -508,7 +508,7 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		m.Integration = &apigateway.Method_Integration{
 			ConnectionId:          cfn.Ref(VPCLinkResourceName),
 			ConnectionType:        "VPC_LINK",
-			IntegrationHttpMethod: "ANY",
+			IntegrationHttpMethod: method,
 			PassthroughBehavior:   "WHEN_NO_MATCH",
 			RequestParameters:     integrationRequestParams,
 			Type:                  "HTTP_PROXY",
