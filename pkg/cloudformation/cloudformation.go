@@ -269,15 +269,22 @@ func buildAWSAPIGWDeploymentMethodSettings(cachingEnabled bool, apiResources []A
 	if cachingEnabled && apiResources != nil && len(apiResources) > 0 {
 		for i, resource := range apiResources {
 			for j, method := range resource.Methods {
-				methodSetting := apigateway.Deployment_MethodSetting{
-					ResourcePath:   buildResourcePath(resource.Path),
-					HttpMethod:     method.Method,
-					CachingEnabled: resource.CachingEnabled,
-				}
-				if i == 0 && j == 0 {
-					methodSettings[0] = methodSetting
-				} else {
-					methodSettings = append(methodSettings, methodSetting)
+				if resource.CachingEnabled {
+					cacheTTLSecs := 300
+					if resource.CacheTtlInSeconds > 0 {
+						cacheTTLSecs = resource.CacheTtlInSeconds
+					}
+					methodSetting := apigateway.Deployment_MethodSetting{
+						ResourcePath:      buildResourcePath(resource.Path),
+						HttpMethod:        method.Method,
+						CachingEnabled:    resource.CachingEnabled,
+						CacheTtlInSeconds: cacheTTLSecs,
+					}
+					if i == 0 && j == 0 {
+						methodSettings[0] = methodSetting
+					} else {
+						methodSettings = append(methodSettings, methodSetting)
+					}
 				}
 			}
 		}
@@ -389,40 +396,37 @@ func buildAWSApiGatewayMethod(resourceLogicalName, path string, timeout int, aut
 		if resource.ProxyPathParams != nil && len(resource.ProxyPathParams) > 0 {
 			for _, param := range resource.ProxyPathParams {
 				mathodVarName := fmt.Sprintf("method.request.path.%s", param.Param)
-				var intVarName string
+				intVarName := fmt.Sprintf("integration.request.path.%s", param.Param)
 				if param.MappingParam != "" {
-					intVarName = param.MappingParam
+					integrationRequestParams[intVarName] = param.MappingParam
 				} else {
-					intVarName = fmt.Sprintf("integration.request.path.%s", param.Param)
+					integrationRequestParams[intVarName] = mathodVarName
+					requestParams[mathodVarName] = true
 				}
-				requestParams[mathodVarName] = true
-				integrationRequestParams[intVarName] = mathodVarName
 			}
 		}
 		if resource.ProxyQueryParams != nil && len(resource.ProxyQueryParams) > 0 {
 			for _, param := range resource.ProxyQueryParams {
 				mathodVarName := fmt.Sprintf("method.request.query.%s", param.Param)
-				var intVarName string
+				intVarName := fmt.Sprintf("integration.request.query.%s", param.Param)
 				if param.MappingParam != "" {
-					intVarName = param.MappingParam
+					integrationRequestParams[intVarName] = param.MappingParam
 				} else {
-					intVarName = fmt.Sprintf("integration.request.query.%s", param.Param)
+					integrationRequestParams[intVarName] = mathodVarName
+					requestParams[mathodVarName] = true
 				}
-				requestParams[mathodVarName] = true
-				integrationRequestParams[intVarName] = mathodVarName
 			}
 		}
 		if resource.ProxyHeaderParams != nil && len(resource.ProxyHeaderParams) > 0 {
 			for _, param := range resource.ProxyHeaderParams {
 				mathodVarName := fmt.Sprintf("method.request.header.%s", param.Param)
-				var intVarName string
+				intVarName := fmt.Sprintf("integration.request.header.%s", param.Param)
 				if param.MappingParam != "" {
-					intVarName = param.MappingParam
+					integrationRequestParams[intVarName] = param.MappingParam
 				} else {
-					intVarName = fmt.Sprintf("integration.request.header.%s", param.Param)
+					integrationRequestParams[intVarName] = mathodVarName
+					requestParams[mathodVarName] = true
 				}
-				requestParams[mathodVarName] = true
-				integrationRequestParams[intVarName] = mathodVarName
 			}
 		}
 		if resource.PathParams != nil && len(resource.PathParams) > 0 {
@@ -631,6 +635,37 @@ func buildUsagePlan(usagePlan UsagePlan, stage string, index int, usagePlanMetho
 	}
 
 	r.AWSCloudFormationDependsOn = []string{fmt.Sprintf("%s%d", DeploymentResourceName, index)}
+
+	return r
+}
+
+func buildGlobalUsagePlan(usagePlan UsagePlan, stage string, index int, usagePlanMethodSettings []apigateway.UsagePlan_ApiStage, deploymentCount int) *apigateway.UsagePlan {
+	r := &apigateway.UsagePlan{
+		UsagePlanName: usagePlan.PlanName,
+		Description:   usagePlan.Description,
+		Quota: &apigateway.UsagePlan_QuotaSettings{
+			Limit:  usagePlan.QuotaLimit,
+			Offset: usagePlan.QuotaOffset,
+			Period: usagePlan.QuotaPeriod,
+		},
+		Throttle: &apigateway.UsagePlan_ThrottleSettings{
+			BurstLimit: usagePlan.ThrottleBurstLimit,
+			RateLimit:  usagePlan.ThrottleRateLimit,
+		},
+	}
+
+	if usagePlanMethodSettings != nil {
+		r.ApiStages = usagePlanMethodSettings
+	} else {
+		r.ApiStages = buildMethodThrottling(usagePlan.MethodThrottlingParameters, stage, index)
+	}
+
+	var dependsOn []string = make([]string, deploymentCount)
+	for i := 0; i < deploymentCount; i++ {
+
+		dependsOn[i] = fmt.Sprintf("%s%d", DeploymentResourceName, i)
+	}
+	r.AWSCloudFormationDependsOn = dependsOn
 
 	return r
 }
@@ -884,8 +919,13 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			loggingLevel = cfg.LoggingLevel
 		}
 
-		deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources, cfg.CachingSize, loggingLevel, i)
-		template.Resources[fmt.Sprintf("%s%d", DeploymentResourceName, i)] = deployment
+		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
+			deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.AWSAPIDefinitions[i].APIs, cfg.CachingSize, loggingLevel, i)
+			template.Resources[fmt.Sprintf("%s%d", DeploymentResourceName, i)] = deployment
+		} else {
+			deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources, cfg.CachingSize, loggingLevel, i)
+			template.Resources[fmt.Sprintf("%s%d", DeploymentResourceName, i)] = deployment
+		}
 
 		if cfg.CustomDomainName != "" && cfg.CertificateArn != "" {
 			if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
@@ -933,13 +973,19 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 
 	}
 
+	var deploymentCount int
+	if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
+		deploymentCount = len(cfg.AWSAPIDefinitions)
+	} else {
+		deploymentCount = 1
+	}
 	if useGlobalUsagePlans {
 		for j, usagePlan := range cfg.UsagePlans {
 			keyArr := buildAPIKey(usagePlan, globalUsagePlanIndex)
 			for k, key := range keyArr {
 				template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyResourceName, j, k, globalUsagePlanIndex)] = key
 			}
-			template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, globalUsagePlanIndex)] = buildUsagePlan(usagePlan, cfg.StageName, globalUsagePlanIndex, usagePlanStages[j])
+			template.Resources[fmt.Sprintf("%s%d%d", UsagePlanResourceName, j, globalUsagePlanIndex)] = buildGlobalUsagePlan(usagePlan, cfg.StageName, globalUsagePlanIndex, usagePlanStages[j], deploymentCount)
 			mapArr := buildUsagePlanAPIKeyMapping(usagePlan, j, globalUsagePlanIndex)
 			for k, key := range mapArr {
 				template.Resources[fmt.Sprintf("%s%d%d%d", APIKeyUsagePlanResourceName, j, k, globalUsagePlanIndex)] = key

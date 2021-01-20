@@ -66,6 +66,7 @@ type MethodThrottlingParametersObject struct {
 type APIResource struct {
 	Path              string          `json:"path"`
 	CachingEnabled    bool            `json:"caching_enabled"`
+	CacheTtlInSeconds int             `json:"cache_ttl_secs"`
 	Methods           []Method        `json:"method"`
 	PathParams        []ConstantParam `json:"cons_path_params"`
 	QueryParams       []ConstantParam `json:"cons_query_params"`
