@@ -15,6 +15,7 @@ events { worker_connections 1024; }
 
 http {
     sendfile on;
+		server_tokens off;
 
     server {
       listen 8080;

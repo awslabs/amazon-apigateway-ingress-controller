@@ -347,6 +347,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 	apiSize := len(configArr)
 
 	for i := 0; i < apiSize; i++ {
+		time.Sleep(6000 * time.Millisecond)
 		r.log.Info("creating apigateway deployment", zap.String(fmt.Sprintf("%s%d", cfn.OutputKeyRestAPIID, i), outputs[fmt.Sprintf("%s%d", cfn.OutputKeyRestAPIID, i)]), zap.String("stage", getStageName(instance)))
 		if _, err := r.apigatewaySvc.CreateDeployment(&apigateway.CreateDeploymentInput{
 			RestApiId: aws.String(outputs[fmt.Sprintf("%s%d", cfn.OutputKeyRestAPIID, i)]),
@@ -356,6 +357,7 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 	}
+	time.Sleep(6000 * time.Millisecond)
 
 	u, err := url.Parse(outputs[fmt.Sprintf("%s%d", cfn.OutputKeyAPIGatewayEndpoint, 0)])
 	if err != nil {
