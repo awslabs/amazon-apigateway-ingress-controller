@@ -5,10 +5,11 @@ type Output struct {
 }
 
 type Statement struct {
-	Effect    string              `json:"Effect"`
-	Principal map[string][]string `json:"Principal"`
-	Action    []string            `json:"Action"`
-	Resource  []string            `json:"Resource"`
+	Effect    string                       `json:"Effect"`
+	Principal map[string][]string          `json:"Principal"`
+	Action    []string                     `json:"Action"`
+	Resource  []string                     `json:"Resource"`
+	Condition map[string]map[string]string `json:"Condition,omitempty"`
 }
 
 type AssumeStatement struct {
@@ -28,10 +29,11 @@ type PolicyDocument struct {
 }
 
 type AllPrinciplesStatement struct {
-	Effect    string   `json:"Effect"`
-	Principal string   `json:"Principal"`
-	Action    []string `json:"Action"`
-	Resource  []string `json:"Resource"`
+	Effect    string                       `json:"Effect"`
+	Principal string                       `json:"Principal"`
+	Action    []string                     `json:"Action"`
+	Resource  []string                     `json:"Resource"`
+	Condition map[string]map[string]string `json:"Condition,omitempty"`
 }
 
 type AllPrinciplesPolicyDocument struct {
@@ -88,6 +90,8 @@ type Method struct {
 
 type AWSAPIDefinition struct {
 	Name                  string             `json:"name,omitempty"`
+	Type                  string             `json:"type"`
+	VPCID                 string             `json:"vpc_id"`
 	Context               string             `json:"context"`
 	AuthenticationEnabled bool               `json:"authentication_enabled"`
 	APIKeyEnabled         bool               `json:"api_key_enabled"`

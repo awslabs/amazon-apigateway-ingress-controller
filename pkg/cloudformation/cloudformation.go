@@ -24,6 +24,7 @@ import (
 const (
 	AWSStackName                            = "AWS::StackName"
 	AWSRegion                               = "AWS::Region"
+	AWSAccountId                            = "AWS::AccountId"
 	APIMethodResourceID                     = "Method"
 	APIKeyResourceName                      = "APIKey"
 	APIKeyUsagePlanResourceName             = "APIKeyUsagePlan"
@@ -173,7 +174,7 @@ func buildAWSApiGatewayEmptyModel(index int) *apigateway.Model {
 	return model
 }
 
-func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationType string, minimumCompressionSize int, apiName string, binaryMediaTypes []string) *apigateway.RestApi {
+func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationType string, minimumCompressionSize int, apiName string, binaryMediaTypes []string, vpcId string) *apigateway.RestApi {
 	api := &apigateway.RestApi{
 		ApiKeySourceType: "HEADER",
 		EndpointConfiguration: &apigateway.RestApi_EndpointConfiguration{
@@ -181,7 +182,31 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 		},
 		Name: apiName,
 	}
-	if authorizationType == "AWS_IAM" {
+	vpcSourceCondition := make(map[string]string)
+	vpcSourceCondition["aws:sourceVpc"] = vpcId
+	vpcCondition := make(map[string]map[string]string)
+	vpcCondition["StringNotEquals"] = vpcSourceCondition
+
+	if authorizationType == "AWS_IAM" && apiEPType == "PRIVATE" {
+		api.Policy = &PolicyDocument{
+			Version: "2012-10-17",
+			Statement: []Statement{
+				{
+					Action:    []string{"execute-api:Invoke"},
+					Effect:    "Deny",
+					Principal: map[string][]string{"AWS": arns},
+					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:%s:%s:*/*/*/*", AWSRegion, AWSAccountId))},
+					Condition: vpcCondition,
+				},
+				{
+					Action:    []string{"execute-api:Invoke"},
+					Effect:    "Allow",
+					Principal: map[string][]string{"AWS": arns},
+					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:%s:%s:*/*/*/*", AWSRegion, AWSAccountId))},
+				},
+			},
+		}
+	} else if authorizationType == "AWS_IAM" {
 		api.Policy = &PolicyDocument{
 			Version: "2012-10-17",
 			Statement: []Statement{
@@ -190,6 +215,25 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 					Effect:    "Allow",
 					Principal: map[string][]string{"AWS": arns},
 					Resource:  []string{"*"},
+				},
+			},
+		}
+	} else if apiEPType == "PRIVATE" {
+		api.Policy = &AllPrinciplesPolicyDocument{
+			Version: "2012-10-17",
+			Statement: []AllPrinciplesStatement{
+				{
+					Action:    []string{"execute-api:Invoke"},
+					Effect:    "Deny",
+					Principal: "*",
+					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:%s:%s:*/*/*/*", AWSRegion, AWSAccountId))},
+					Condition: vpcCondition,
+				},
+				{
+					Action:    []string{"execute-api:Invoke"},
+					Effect:    "Allow",
+					Principal: "*",
+					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:%s:%s:*/*/*/*", AWSRegion, AWSAccountId))},
 				},
 			},
 		}
@@ -886,22 +930,36 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			template.Resources[k] = resource
 		}
 
-		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && !cfg.AWSAPIDefinitions[i].AuthenticationEnabled {
+		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && !cfg.AWSAPIDefinitions[i].AuthenticationEnabled && cfg.AWSAPIDefinitions[i].Type != "" {
 			var binaryMediaTypes []string
 			if cfg.AWSAPIDefinitions[i].BinaryMediaTypes != nil && len(cfg.AWSAPIDefinitions[i].BinaryMediaTypes) > 0 {
 				binaryMediaTypes = cfg.AWSAPIDefinitions[i].BinaryMediaTypes
 			}
-			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, "NONE", cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name, binaryMediaTypes)
+			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.AWSAPIDefinitions[i].Type, "NONE", cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name, binaryMediaTypes, cfg.AWSAPIDefinitions[i].VPCID)
+			template.Resources[fmt.Sprintf("%s%d", APIResourceName, i)] = restAPI
+		} else if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && !cfg.AWSAPIDefinitions[i].AuthenticationEnabled {
+			var binaryMediaTypes []string
+			if cfg.AWSAPIDefinitions[i].BinaryMediaTypes != nil && len(cfg.AWSAPIDefinitions[i].BinaryMediaTypes) > 0 {
+				binaryMediaTypes = cfg.AWSAPIDefinitions[i].BinaryMediaTypes
+			}
+			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, "NONE", cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name, binaryMediaTypes, cfg.AWSAPIDefinitions[i].VPCID)
+			template.Resources[fmt.Sprintf("%s%d", APIResourceName, i)] = restAPI
+		} else if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && cfg.AWSAPIDefinitions[i].Type != "" {
+			var binaryMediaTypes []string
+			if cfg.AWSAPIDefinitions[i].BinaryMediaTypes != nil && len(cfg.AWSAPIDefinitions[i].BinaryMediaTypes) > 0 {
+				binaryMediaTypes = cfg.AWSAPIDefinitions[i].BinaryMediaTypes
+			}
+			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.AWSAPIDefinitions[i].Type, authorizationType, cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name, binaryMediaTypes, cfg.AWSAPIDefinitions[i].VPCID)
 			template.Resources[fmt.Sprintf("%s%d", APIResourceName, i)] = restAPI
 		} else if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
 			var binaryMediaTypes []string
 			if cfg.AWSAPIDefinitions[i].BinaryMediaTypes != nil && len(cfg.AWSAPIDefinitions[i].BinaryMediaTypes) > 0 {
 				binaryMediaTypes = cfg.AWSAPIDefinitions[i].BinaryMediaTypes
 			}
-			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType, cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name, binaryMediaTypes)
+			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType, cfg.MinimumCompressionSize, cfg.AWSAPIDefinitions[i].Name, binaryMediaTypes, cfg.AWSAPIDefinitions[i].VPCID)
 			template.Resources[fmt.Sprintf("%s%d", APIResourceName, i)] = restAPI
 		} else {
-			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType, cfg.MinimumCompressionSize, cfn.Ref(AWSStackName), []string{"AWS::NoValue"})
+			restAPI := buildAWSApiGatewayRestAPI(cfg.Arns, cfg.APIEndpointType, authorizationType, cfg.MinimumCompressionSize, cfn.Ref(AWSStackName), []string{"AWS::NoValue"}, cfg.AWSAPIDefinitions[i].VPCID)
 			template.Resources[fmt.Sprintf("%s%d", APIResourceName, i)] = restAPI
 		}
 
@@ -928,7 +986,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		}
 
 		if cfg.CustomDomainName != "" && cfg.CertificateArn != "" {
-			if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
+			if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && cfg.AWSAPIDefinitions[i].Type != "PRIVATE" {
 				basePathMapping := buildCustomDomainBasePathMapping(cfg.CustomDomainName, cfg.StageName, cfg.AWSAPIDefinitions[i].Context, i)
 				template.Resources[fmt.Sprintf("%s%d", CustomDomainBasePathMappingResourceName, i)] = basePathMapping
 			} else {
@@ -938,7 +996,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		}
 
 		if cfg.WAFEnabled {
-			if cfg.WAFAssociation {
+			if cfg.WAFAssociation && cfg.AWSAPIDefinitions[i].Type != "PRIVATE" {
 				webACLAssociation := buildAWSWAFWebACLAssociation(cfg.StageName, i)
 				template.Resources[fmt.Sprintf("%s%d", WAFAssociationResourceName, i)] = webACLAssociation
 			}
@@ -1017,7 +1075,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		template.Outputs[fmt.Sprintf("%s%d", OutputKeyRestAPIID, i)] = Output{Value: cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, i))}
 		template.Outputs[fmt.Sprintf("%s%d", OutputKeyAPIGatewayEndpoint, i)] = Output{Value: cfn.Join("", []string{"https://", cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, i)), ".execute-api.", cfn.Ref("AWS::Region"), ".amazonaws.com/", cfg.StageName})}
 
-		if cfg.WAFAssociation {
+		if cfg.WAFAssociation && cfg.AWSAPIDefinitions[i].Type != "PRIVATE" {
 			template.Outputs[fmt.Sprintf("%s%d", OutputKeyWAFAssociationCreated, i)] = Output{Value: cfn.Ref(fmt.Sprintf("%s%d", WAFAssociationResourceName, i))}
 		}
 	}

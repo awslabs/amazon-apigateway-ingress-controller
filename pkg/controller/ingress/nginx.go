@@ -20,6 +20,7 @@ http {
 
     server {
       listen {{ .Port }};
+			add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 {{ range .Ingress.Spec.Rules -}}
 {{ range .IngressRuleValue.HTTP.Paths }}
         location {{ .Path }} {
