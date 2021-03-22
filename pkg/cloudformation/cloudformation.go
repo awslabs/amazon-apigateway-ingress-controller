@@ -195,14 +195,14 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 					Action:    []string{"execute-api:Invoke"},
 					Effect:    "Deny",
 					Principal: map[string][]string{"AWS": arns},
-					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:%s:%s:*/*/*/*", AWSRegion, AWSAccountId))},
+					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:${%s}:${%s}:*/*/*/*", AWSRegion, AWSAccountId))},
 					Condition: vpcCondition,
 				},
 				{
 					Action:    []string{"execute-api:Invoke"},
 					Effect:    "Allow",
 					Principal: map[string][]string{"AWS": arns},
-					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:%s:%s:*/*/*/*", AWSRegion, AWSAccountId))},
+					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:${%s}:${%s}:*/*/*/*", AWSRegion, AWSAccountId))},
 				},
 			},
 		}
@@ -226,14 +226,14 @@ func buildAWSApiGatewayRestAPI(arns []string, apiEPType string, authorizationTyp
 					Action:    []string{"execute-api:Invoke"},
 					Effect:    "Deny",
 					Principal: "*",
-					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:%s:%s:*/*/*/*", AWSRegion, AWSAccountId))},
+					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:${%s}:${%s}:*/*/*/*", AWSRegion, AWSAccountId))},
 					Condition: vpcCondition,
 				},
 				{
 					Action:    []string{"execute-api:Invoke"},
 					Effect:    "Allow",
 					Principal: "*",
-					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:%s:%s:*/*/*/*", AWSRegion, AWSAccountId))},
+					Resource:  []string{cfn.Sub(fmt.Sprintf("arn:aws:execute-api:${%s}:${%s}:*/*/*/*", AWSRegion, AWSAccountId))},
 				},
 			},
 		}
