@@ -989,7 +989,7 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 			if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 && cfg.AWSAPIDefinitions[i].Type != "PRIVATE" {
 				basePathMapping := buildCustomDomainBasePathMapping(cfg.CustomDomainName, cfg.StageName, cfg.AWSAPIDefinitions[i].Context, i)
 				template.Resources[fmt.Sprintf("%s%d", CustomDomainBasePathMappingResourceName, i)] = basePathMapping
-			} else {
+			} else if cfg.AWSAPIDefinitions[i].Type != "PRIVATE" {
 				basePathMapping := buildCustomDomainBasePathMapping(cfg.CustomDomainName, cfg.StageName, cfg.CustomDomainBasePath, i)
 				template.Resources[fmt.Sprintf("%s%d", CustomDomainBasePathMappingResourceName, i)] = basePathMapping
 			}
