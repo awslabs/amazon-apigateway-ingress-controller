@@ -336,7 +336,7 @@ func buildAWSAPIGWDeploymentMethodSettings(cachingEnabled bool, apiResources []A
 	return methodSettings
 }
 
-func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingEnabled bool, apiResources []APIResource, cacheSize string, loggingLevel string, index int) *apigateway.Deployment {
+func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingEnabled bool, apiResources []APIResource, cacheSize string, loggingLevel string, metricsEnabled bool, tracingEnabled bool, dataTraceEnabled bool, index int) *apigateway.Deployment {
 	d := &apigateway.Deployment{
 		RestApiId: cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
 		StageName: stageName,
@@ -345,6 +345,9 @@ func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingE
 			CacheClusterSize:    cacheSize,
 			CacheDataEncrypted:  cachingEnabled,
 			MethodSettings:      buildAWSAPIGWDeploymentMethodSettings(cachingEnabled, apiResources),
+			MetricsEnabled:      metricsEnabled,
+			TracingEnabled:      tracingEnabled,
+			DataTraceEnabled:    dataTraceEnabled,
 		},
 	}
 
@@ -971,17 +974,27 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		}
 
 		var loggingLevel string
+		var metricsEnabled bool
+		var tracingEnabled bool
+		var dataTraceEnabled bool
 		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
 			loggingLevel = cfg.AWSAPIDefinitions[i].LoggingLevel
+			metricsEnabled = cfg.AWSAPIDefinitions[i].MetricsEnabled
+			tracingEnabled = cfg.AWSAPIDefinitions[i].TracingEnabled
+			dataTraceEnabled = cfg.AWSAPIDefinitions[i].DataTraceEnabled
+
 		} else {
 			loggingLevel = cfg.LoggingLevel
+			metricsEnabled = cfg.AWSAPIDefinitions[i].MetricsEnabled
+			tracingEnabled = cfg.AWSAPIDefinitions[i].TracingEnabled
+			dataTraceEnabled = cfg.AWSAPIDefinitions[i].DataTraceEnabled
 		}
 
 		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
-			deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.AWSAPIDefinitions[i].APIs, cfg.CachingSize, loggingLevel, i)
+			deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.AWSAPIDefinitions[i].APIs, cfg.CachingSize, loggingLevel, metricsEnabled, tracingEnabled, dataTraceEnabled, i)
 			template.Resources[fmt.Sprintf("%s%d", DeploymentResourceName, i)] = deployment
 		} else {
-			deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources, cfg.CachingSize, loggingLevel, i)
+			deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources, cfg.CachingSize, loggingLevel, metricsEnabled, tracingEnabled, dataTraceEnabled, i)
 			template.Resources[fmt.Sprintf("%s%d", DeploymentResourceName, i)] = deployment
 		}
 

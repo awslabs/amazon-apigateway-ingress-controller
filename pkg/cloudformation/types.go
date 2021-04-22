@@ -101,6 +101,11 @@ type AWSAPIDefinition struct {
 	APIs                  []APIResource      `json:"apis"`
 	BinaryMediaTypes      []string           `json:"binary_media_types"`
 	LoggingLevel          string             `json:"logging_level"`
+	MetricsEnabled        bool               `json:"metrics_enabled"`
+	TracingEnabled        bool               `json:"xray_enabled"`
+	DataTraceEnabled      bool               `json:"fullreqresp_trace_enabled"`
+	ThrottlingBurstLimit  int64              `json:"throttling_burst_limit"`
+	ThrottlingRateLimit   float64            `json:"throttling_rate_limit"`
 }
 
 type AWSAPIAuthorizer struct {
