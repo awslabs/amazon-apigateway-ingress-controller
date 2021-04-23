@@ -573,11 +573,12 @@ func buildAWSEC2SecurityGroupIngresses(securityGroupIds []string, cidr string, n
 	sgIngresses := make([]*ec2.SecurityGroupIngress, len(securityGroupIds))
 	for i, sgID := range securityGroupIds {
 		sgIngresses[i] = &ec2.SecurityGroupIngress{
-			IpProtocol: "TCP",
-			CidrIp:     cidr,
-			FromPort:   nodePort,
-			ToPort:     nodePort,
-			GroupId:    sgID,
+			IpProtocol:  "TCP",
+			CidrIp:      cidr,
+			FromPort:    nodePort,
+			ToPort:      nodePort,
+			GroupId:     sgID,
+			Description: "Allow access from vpc link",
 		}
 	}
 
