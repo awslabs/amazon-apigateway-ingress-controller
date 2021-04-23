@@ -104,7 +104,7 @@ type AWSAPIDefinition struct {
 	MetricsEnabled        bool               `json:"metrics_enabled"`
 	TracingEnabled        bool               `json:"xray_enabled"`
 	DataTraceEnabled      bool               `json:"fullreqresp_trace_enabled"`
-	ThrottlingBurstLimit  int64              `json:"throttling_burst_limit"`
+	ThrottlingBurstLimit  int                `json:"throttling_burst_limit"`
 	ThrottlingRateLimit   float64            `json:"throttling_rate_limit"`
 }
 
