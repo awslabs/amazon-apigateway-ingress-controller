@@ -1,6 +1,6 @@
 GO111MODULE=on
 # Image URL to use all building/pushing image targets
-IMG= ?
+IMG=?
 
 all: test manager
 
@@ -44,7 +44,7 @@ endif
 	go generate ./pkg/... ./cmd/...
 
 # Build the docker image
-docker-build: test 
+docker-build: #test 
 	docker build . -t ${IMG}
 	@echo "updating kustomize image patch file for manager resource"
 	sed -i '' -e 's@image: .*@image: '"${IMG}"'@' -e 's@iam.amazonaws.com/role: .*@iam.amazonaws.com/role: '"${IAMROLEARN}"'@' ./config/default/manager_image_patch.yaml

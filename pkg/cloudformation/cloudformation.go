@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/awslabs/amazon-apigateway-ingress-controller/pkg/logging"
 	"github.com/awslabs/amazon-apigateway-ingress-controller/pkg/network"
 	cfn "github.com/awslabs/goformation/v4/cloudformation"
 	"github.com/awslabs/goformation/v4/cloudformation/apigateway"
@@ -17,7 +16,6 @@ import (
 	"github.com/awslabs/goformation/v4/cloudformation/route53"
 	"github.com/awslabs/goformation/v4/cloudformation/tags"
 	"github.com/awslabs/goformation/v4/cloudformation/wafv2"
-	"go.uber.org/zap"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 )
 
@@ -337,9 +335,7 @@ func buildAWSAPIGWDeploymentMethodSettings(cachingEnabled bool, apiResources []A
 	return methodSettings
 }
 
-func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingEnabled bool, apiResources []APIResource, cacheSize string, loggingLevel string, metricsEnabled bool, tracingEnabled bool, dataTraceEnabled bool, throttlingBurstLimit int, throttlingRateLimit float64, index int) *apigateway.Deployment {
-	logger := logging.New()
-	logger.Info("Params received ", zap.Bool("metricsEnabled", metricsEnabled), zap.Bool("tracingEnabled", tracingEnabled), zap.Bool("dataTraceEnabled", dataTraceEnabled))
+func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingEnabled bool, apiResources []APIResource, cacheSize string, loggingLevel string, metricsEnabled bool, tracingEnabled bool, dataTraceEnabled bool, throttlingBurstLimit int, throttlingRateLimit float64, accessLogSetting *apigateway.Deployment_AccessLogSetting, index int) *apigateway.Deployment {
 
 	d := &apigateway.Deployment{
 		RestApiId: cfn.Ref(fmt.Sprintf("%s%d", APIResourceName, index)),
@@ -353,6 +349,7 @@ func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingE
 			DataTraceEnabled:     dataTraceEnabled,
 			ThrottlingBurstLimit: throttlingBurstLimit,
 			ThrottlingRateLimit:  throttlingRateLimit,
+			AccessLogSetting:     accessLogSetting,
 			MethodSettings:       buildAWSAPIGWDeploymentMethodSettings(cachingEnabled, apiResources),
 		},
 	}
@@ -360,12 +357,6 @@ func buildAWSApiGatewayDeployment(stageName string, dependsOn []string, cachingE
 	if loggingLevel != "" {
 		d.StageDescription.LoggingLevel = loggingLevel
 	}
-
-	d.StageDescription.MetricsEnabled = metricsEnabled
-	d.StageDescription.TracingEnabled = tracingEnabled
-	d.StageDescription.DataTraceEnabled = dataTraceEnabled
-	d.StageDescription.ThrottlingBurstLimit = throttlingBurstLimit
-	d.StageDescription.ThrottlingRateLimit = throttlingRateLimit
 
 	// Since we construct a map of in `mapApiGatewayMethodsAndResourcesFromPaths` we can't determine the order
 	// that this list will be in - making it difficult to test - the order isn't important - but passing tests are.
@@ -984,22 +975,23 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 				template.Resources[fmt.Sprintf("%s%d%d", APIAuthorizerResourceName, i, l)] = authorizer
 			}
 		}
-		logger := logging.New()
 		var loggingLevel string
 		var metricsEnabled bool
 		var tracingEnabled bool
 		var dataTraceEnabled bool
 		var throttlingBurstLimit int
 		var throttlingRateLimit float64
-		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
-			logger.Info("params received from logging level: ", zap.String("loggingLevel", cfg.AWSAPIDefinitions[i].LoggingLevel), zap.Bool("MetricsEnabled", cfg.AWSAPIDefinitions[i].MetricsEnabled), zap.Bool("TracingEnabled", cfg.AWSAPIDefinitions[i].TracingEnabled))
+		var accessLogSetting *apigateway.Deployment_AccessLogSetting = new(apigateway.Deployment_AccessLogSetting)
 
+		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
 			loggingLevel = cfg.AWSAPIDefinitions[i].LoggingLevel
 			metricsEnabled = cfg.AWSAPIDefinitions[i].MetricsEnabled
 			tracingEnabled = cfg.AWSAPIDefinitions[i].TracingEnabled
 			dataTraceEnabled = cfg.AWSAPIDefinitions[i].DataTraceEnabled
 			throttlingBurstLimit = cfg.AWSAPIDefinitions[i].ThrottlingBurstLimit
 			throttlingRateLimit = cfg.AWSAPIDefinitions[i].ThrottlingRateLimit
+			accessLogSetting.Format = cfg.AWSAPIDefinitions[i].AccessLogSetting.Format
+			accessLogSetting.DestinationArn = cfg.AWSAPIDefinitions[i].AccessLogSetting.DestinationArn
 
 			if throttlingBurstLimit == 0 {
 				throttlingBurstLimit = 200
@@ -1015,10 +1007,10 @@ func BuildAPIGatewayTemplateFromIngressRule(cfg *TemplateConfig) *cfn.Template {
 		}
 
 		if cfg.AWSAPIDefinitions != nil && len(cfg.AWSAPIDefinitions) > 0 {
-			deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.AWSAPIDefinitions[i].APIs, cfg.CachingSize, loggingLevel, metricsEnabled, tracingEnabled, dataTraceEnabled, throttlingBurstLimit, throttlingRateLimit, i)
+			deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.AWSAPIDefinitions[i].APIs, cfg.CachingSize, loggingLevel, metricsEnabled, tracingEnabled, dataTraceEnabled, throttlingBurstLimit, throttlingRateLimit, accessLogSetting, i)
 			template.Resources[fmt.Sprintf("%s%d", DeploymentResourceName, i)] = deployment
 		} else {
-			deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources, cfg.CachingSize, loggingLevel, metricsEnabled, tracingEnabled, dataTraceEnabled, throttlingBurstLimit, throttlingRateLimit, i)
+			deployment := buildAWSApiGatewayDeployment(cfg.StageName, methodLogicalNames, cfg.CachingEnabled, cfg.APIResources, cfg.CachingSize, loggingLevel, metricsEnabled, tracingEnabled, dataTraceEnabled, throttlingBurstLimit, throttlingRateLimit, accessLogSetting, i)
 			template.Resources[fmt.Sprintf("%s%d", DeploymentResourceName, i)] = deployment
 		}
 

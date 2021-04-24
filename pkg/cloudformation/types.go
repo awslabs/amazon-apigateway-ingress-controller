@@ -106,6 +106,7 @@ type AWSAPIDefinition struct {
 	DataTraceEnabled      bool               `json:"fullreqresp_trace_enabled"`
 	ThrottlingBurstLimit  int                `json:"throttling_burst_limit"`
 	ThrottlingRateLimit   float64            `json:"throttling_rate_limit"`
+	AccessLogSetting      AccessLogSetting   `json:"access_log_config"`
 }
 
 type AWSAPIAuthorizer struct {
@@ -117,6 +118,11 @@ type AWSAPIAuthorizer struct {
 	AuthorizerResultTtlInSeconds int      `json:"authorizer_result_ttl_secs"`
 	AuthorizerUri                string   `json:"lambda_arn"`
 	ProviderARNs                 []string `json:"provider_arns"`
+}
+
+type AccessLogSetting struct {
+	DestinationArn string `json:"arn"`
+	Format         string `json:"format"`
 }
 
 type Param struct {
