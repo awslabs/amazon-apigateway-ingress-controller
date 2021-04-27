@@ -1,4 +1,4 @@
-
+GO111MODULE=on
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
 
@@ -10,7 +10,7 @@ test: generate fmt vet manifests
 
 # Build manager binary
 manager: generate fmt vet
-	go build -o bin/manager github.com/awslabs/amazon-apigateway-ingress-controller/cmd/manager
+	go build -mod=vendor -o bin/manager github.com/awslabs/amazon-apigateway-ingress-controller/cmd/manager
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: generate fmt vet

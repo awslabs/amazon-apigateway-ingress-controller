@@ -516,7 +516,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"complete": &cloudformation.Stack{
 							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
 							Outputs: []*cloudformation.Output{
-								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestAPIID), OutputValue: aws.String("test")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo,bar")},
 							},
@@ -553,7 +553,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"update": &cloudformation.Stack{
 							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
 							Outputs: []*cloudformation.Output{
-								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestAPIID), OutputValue: aws.String("test")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo")},
 							},
@@ -589,7 +589,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"update": &cloudformation.Stack{
 							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
 							Outputs: []*cloudformation.Output{
-								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestAPIID), OutputValue: aws.String("test")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo")},
 							},
@@ -625,7 +625,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"update": &cloudformation.Stack{
 							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
 							Outputs: []*cloudformation.Output{
-								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestAPIID), OutputValue: aws.String("test")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo")},
 							},
@@ -662,7 +662,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"brokenStackUpdate": &cloudformation.Stack{
 							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
 							Outputs: []*cloudformation.Output{
-								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestAPIID), OutputValue: aws.String("test")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo")},
 							},
@@ -698,7 +698,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"deployAPIfails": &cloudformation.Stack{
 							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
 							Outputs: []*cloudformation.Output{
-								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestAPIID), OutputValue: aws.String("test")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("http123://user:abc{DEf1=ghi@bad-URL-example.com:5432")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo,bar")},
 							},
@@ -736,7 +736,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"complete": &cloudformation.Stack{
 							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
 							Outputs: []*cloudformation.Output{
-								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestAPIID), OutputValue: aws.String("test")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("http123://user:abc{DEf1=ghi@bad-URL-example.com:5432")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo,bar")},
 							},
@@ -768,7 +768,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"complete": &cloudformation.Stack{
 							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
 							Outputs: []*cloudformation.Output{
-								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestAPIID), OutputValue: aws.String("test")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo,bar")},
 							},
@@ -800,7 +800,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"complete": &cloudformation.Stack{
 							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
 							Outputs: []*cloudformation.Output{
-								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestAPIID), OutputValue: aws.String("test")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo,bar")},
 							},
@@ -832,7 +832,7 @@ func TestReconcileIngress_Reconcile(t *testing.T) {
 						"complete": &cloudformation.Stack{
 							StackStatus: aws.String(cloudformation.StackStatusCreateComplete),
 							Outputs: []*cloudformation.Output{
-								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestApiID), OutputValue: aws.String("test")},
+								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyRestAPIID), OutputValue: aws.String("test")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyAPIGatewayEndpoint), OutputValue: aws.String("https://foo.bar")},
 								&cloudformation.Output{OutputKey: aws.String(controllercfn.OutputKeyClientARNS), OutputValue: aws.String("foo,bar")},
 							},

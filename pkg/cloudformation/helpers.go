@@ -16,6 +16,7 @@ var CompleteStatuses = []string{
 	cloudformation.StackStatusCreateComplete,
 	cloudformation.StackStatusUpdateComplete,
 	cloudformation.StackStatusDeleteComplete,
+	cloudformation.StackStatusUpdateRollbackComplete,
 }
 
 //FailedStatuses contains all CloudFormation status strings that we consider to be failed for a vpn
@@ -24,7 +25,6 @@ var FailedStatuses = []string{
 	cloudformation.StackStatusRollbackComplete,
 	cloudformation.StackStatusRollbackFailed,
 	cloudformation.StackStatusUpdateRollbackFailed,
-	cloudformation.StackStatusUpdateRollbackComplete,
 	cloudformation.StackStatusDeleteFailed,
 }
 
@@ -122,20 +122,31 @@ func DescribeStack(cfnSvc cloudformationiface.CloudFormationAPI, stackName strin
 }
 
 func GetResourceID(cfnSvc cloudformationiface.CloudFormationAPI, stackName string, logicalID string) (string, error) {
-	resources, err := cfnSvc.ListStackResources(&cloudformation.ListStackResourcesInput{
-		StackName: aws.String(stackName),
-	})
-	if err != nil {
-		return "", err
-	}
-
-	for _, resourceSummary := range resources.StackResourceSummaries {
-		if *resourceSummary.LogicalResourceId == logicalID {
-			return *resourceSummary.PhysicalResourceId, nil
+	var next *string
+	for {
+		resources, err := cfnSvc.ListStackResources(&cloudformation.ListStackResourcesInput{
+			StackName: aws.String(stackName),
+			NextToken: next,
+		})
+		if err != nil {
+			return "", err
 		}
-	}
 
+		for _, resourceSummary := range resources.StackResourceSummaries {
+			if *resourceSummary.LogicalResourceId == logicalID {
+				return *resourceSummary.PhysicalResourceId, nil
+			}
+		}
+
+		if *resources.NextToken == "" {
+			break
+		} else {
+			next = resources.NextToken
+		}
+
+	}
 	return "", fmt.Errorf("resource %s not found", logicalID)
+
 }
 
 func StackOutputMap(stack *cloudformation.Stack) map[string]string {
