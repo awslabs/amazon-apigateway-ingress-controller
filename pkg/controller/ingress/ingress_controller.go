@@ -318,6 +318,10 @@ func (r *ReconcileIngress) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	if cfn.IsComplete(*stack.StackStatus) == false {
 		r.log.Info("Not complete, requeuing", zap.String("status", *stack.StackStatus))
+		//TODO: there is a problem when main stack is deleted. the route53 stack in shared aws account also needs to be deleted
+		//check stack.LastUpdatedTime  if it was about 10min before, then better cancel any update and delete this stack
+		//stack.StackStatus
+		//cfn.IsPending()
 		// increasing timout value to 20 as create/update cf stack takes time and quick update gives errors sometimes
 		return reconcile.Result{RequeueAfter: 20 * time.Second}, r.Update(context.TODO(), instance)
 	}
@@ -1068,7 +1072,7 @@ func (r *ReconcileIngress) reconcileRoute53(request reconcile.Request, mainStack
 	stackName := fmt.Sprintf("%s%s", instance.ObjectMeta.Name, Route53StackNamePostfix)
 
 	hostedZoneName := getHostedZoneName(instance)
-	r.log.Info("Reconile apigateway route53", zap.String("hostedZoneName", hostedZoneName))
+	r.log.Info("Reconcile apigateway route53", zap.String("hostedZoneName", hostedZoneName))
 	if hostedZoneName == "" {
 		if finalizers.HasFinalizer(instance, FinalizerRoute53CFNStack) {
 			r.log.Info("Ingress has finalizer, deleting.")
@@ -1122,6 +1126,7 @@ func (r *ReconcileIngress) reconcileRoute53(request reconcile.Request, mainStack
 
 	if cfn.IsComplete(*stack.StackStatus) == false {
 		r.log.Info("Not complete, requeuing route53 stack", zap.String("status", *stack.StackStatus))
+
 		return reconcile.Result{RequeueAfter: 20 * time.Second}, r.Update(context.TODO(), instance)
 	}
 
